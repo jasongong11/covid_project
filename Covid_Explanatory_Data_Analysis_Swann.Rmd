@@ -14,6 +14,9 @@ library(tidyverse)
 library(data.table)
 library(ggplot2)  
 library(scales)
+library(fpp)
+library("TSA")
+library("lattice")
 ```
 
 ```{r}
@@ -140,9 +143,92 @@ for (val in states_vect)
   title(val)
 }
 ```
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r ccf}
+# create a matrix to store the cross-correlation stats
+ccf_values <- matrix(, nrow = 0, ncol = 45)
+options
+par(mfrow=c(2,3))
+
+# cross correlation
+for (val in states_vect) {
+  # subset by state
+  dum <- subset(state_data2, state == val)
+  # smoothing the data by apply an sliding averaging window
+  dum <- dum %>% mutate(avg_new_cases = stats::filter(new_cases, filter=rep(1/7,7), side=1),
+         avg_new_deaths = stats::filter(new_deaths, filter=rep(1/7,7), side=1))
+  dum <- na.omit(dum)
+  # apply a prewhiten function which first apply an ARIMA model for the variables, 
+  # then apply a cross correlation model on the residuals
+  prewhiten(as.numeric(dum$avg_new_cases), as.numeric(dum$avg_new_deaths))
+  title(val)
+  # take the lagged correlation into a vector and store it in the matrix
+  ccf_value <- prewhiten(as.numeric(dum$avg_new_cases), as.numeric(dum$avg_new_deaths))
+  lag_vector <- ccf_value[['ccf']][['lag']]
+  ccf_value <- as.vector(ccf_value[['ccf']][['acf']])
+  ccf_values <- rbind(ccf_values, ccf_value)
+}
+
+# plot the ccf as a heatmap, col represents the lags, and row represents states
+colnames(ccf_values) <- lag_vector
+rownames(ccf_values) <- states_vect
+plot(heatmap(ccf_values, Colv = NA, Rowv = NA))
+
+# TODO #
+# apply a windowed ccf analysis, the lagging might change depending on phase of the spread
+```
+
+```{r clustering}
+library(dtwclust)
+
+ts_case_matrix <- matrix(, nrow = length(states_vect), ncol = length(dates_vect))
+ts_death_matrix <- matrix(, nrow = length(states_vect), ncol = length(dates_vect))
+
+for (i in 1:length(states_vect)) {
+  for (j in 1:length(dates_vect)) {
+    tryCatch({ts_case_matrix[i,j] <- state_data2$new_cases[(state_data2$state == states_vect[i] &
+                                                            state_data2$date == dates_vect[j])]},
+                                    error=function(e){ts_case_matrix[i,j] <- NA})
+    tryCatch({ts_death_matrix[i,j] <- state_data2$new_deaths[(state_data2$state == states_vect[i] &
+                                                             state_data2$date == dates_vect[j])]},
+                                    error=function(e){ts_death_matrix[i,j] <- NA})
+  }
+}
+
+plot(0,0,xlim = c(0,385),ylim = c(0,10),type = "n")
+cl <- rainbow(50)
+for (i in 1:50){
+    lines(log(ts_death_matrix[i,]),col = cl[i],type = 'b')
+}
+
+rownames(ts_case_matrix) <- states_vect
+rownames(ts_death_matrix) <- states_vect
+colnames(ts_case_matrix) <- dates_vect
+colnames(ts_death_matrix) <- dates_vect
+
+ts_case_matrix <- ts_case_matrix[ , colSums(is.na(ts_case_matrix)) == 0]
+ts_death_matrix <- ts_death_matrix[ , colSums(is.na(ts_death_matrix)) == 0]
+
+
+pc_case <- tsclust(ts_case_matrix, type = "partitional", k = 20, 
+              distance = "dtw_basic", centroid = "pam", trace = TRUE,
+              args = tsclust_args(dist = list(window.size = 20L)))
+plot(pc_case)
+
+pc_death <- tsclust(ts_death_matrix, type = "partitional", k = 20, 
+              distance = "dtw_basic", centroid = "pam", trace = TRUE,
+              args = tsclust_args(dist = list(window.size = 20L)))
+plot(pc_death)
+
+
+hc_case <- tsclust(ts_case_matrix, type = "hierarchical", k = 6L, 
+              distance = "sbd", trace = TRUE,
+              control = hierarchical_control(method = "average"))
+plot(hc_case)
+hc_death <- tsclust(ts_death_matrix, type = "hierarchical", k = 6L, 
+              distance = "sbd", trace = TRUE,
+              control = hierarchical_control(method = "average"))
+plot(hc_death)
+```
 
