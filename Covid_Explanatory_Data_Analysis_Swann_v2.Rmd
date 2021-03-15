@@ -10,7 +10,8 @@ Try executing this chunk by clicking the *Run* button within the chunk or by pla
 ```{r}
 # packages required
 # install.packages("gridExtra")
-
+#packages = c("gtrendsR","tidyverse","usmap")
+#install.packages("mapproj")
 # importing libraries
 library(dplyr)
 library(tidyverse)
@@ -18,6 +19,7 @@ library(data.table)
 library(ggplot2)  
 library(scales)
 library(gridExtra)
+
 ```
 
 ```{r}
@@ -38,7 +40,7 @@ us_data <-read.csv("us.csv")
 ```{r}
 # transforming date column from CHARACTER to DATE class
 cty_data$date <- as.Date(cty_data$date)
-state_data$date <- as.Date(state_data$date)
+state_data$date <- as.Date(state_data$date,format="%Y-%m-%d")
 us_data$date <- as.Date(us_data$date)
 ```
 
@@ -50,7 +52,7 @@ us_data <- base::subset(us_data,date>"2020-02-29")
 ```
 
 ```{r}
-# Examination of US-wide numbers
+# Examination of US-wide Temporal Trends
 
 # Use `filter()` to add a column named `new_cases` and 'new_deaths'
 us_data$new_cases = as.numeric(stats::filter(us_data$cases,filter=c(1,-1), sides=1))
@@ -63,6 +65,11 @@ us_data$new_deaths[1]<-0
 
 # Add Data on Season
 season <- c("Spring","Summer","Winter","Fall")
+
+# create df for seasons
+season_df = data.frame(c(1:12),c("Winter","Winter","Spring","Spring","Spring","Summer","Summer","Summer","Fall","Fall","Fall","Winter"))
+names(season_df)[1] <- "month"
+names(season_df)[2] <- "season"
 
 for (i in 1:length(us_data$date))
 {
@@ -77,6 +84,8 @@ for (i in 1:length(us_data$date))
   }
 }
 us_data$season = as.factor(us_data$season)
+
+## Plotting Below
 
 # Timeseries of Covid Cases and Deaths through time
 # Value used to transform the data
@@ -99,7 +108,56 @@ gg <- ggplot(us_data,aes(x = new_cases, y = new_deaths, colour = season)) +
 plot(gg)
 ```
 
-```{r}
+```{r, echo = FALSE}
+## Examining State Spatial Trends
+
+# 1 - Formatting Data
+
+# remove leading character in State_Pop$State
+state_pop$State <- substring(state_pop$State,2)
+
+# remove commas from population and convert to numeric
+state_pop$Population <- as.numeric(gsub(",","",state_pop$Population))
+
+
+# add state population data
+state_data <- merge(state_data, state_pop, by.x="state", by.y="State")
+
+
+# get population density
+# remove DC from state_pop list
+state_pop <-state_pop [-c(9), ] 
+state.density = state_pop$Population/state.area
+
+## get state regional data
+states_info <- data.frame(state.name,state.region,state.density)
+names(states_info)[1] <- "Name"
+names(states_info)[2] <- "Region"
+names(states_info)[3] <- "Density"
+
+# add state region data
+state_data <- merge(state_data, states_info, by.x="state", by.y="Name")
+
+# categorize into density groups
+
+for (i in 1:length(state_data$Density))
+{
+  if (state_data$Density[i] <= 50) {
+     state_data$Density2[i] <- "<=50"
+  } else if (state_data$Density[i] >  50 & state_data$Density[i] <= 100) {
+    state_data$Density2[i] <- "50-100"
+  } else if (state_data$Density[i] >  100 & state_data$Density[i] <= 400) {
+    state_data$Density2[i] <- "100-400"
+  } else {
+    state_data$Density2[i] <- ">400"
+  }
+}
+state_data$Density2 <- factor(state_data$Density2,
+    levels = c('<=50','50-100','100-400','>400'),ordered = TRUE)
+
+# sort by date
+state_data<-state_data[order((state_data$date)),]
+
 # Find unique fips values to find unique counties
 fips_vect <- unique(cty_data$fips)
 
@@ -108,9 +166,7 @@ dates_vect <- unique(cty_data$date)
 
 # find unique states (Exclude territories)
 states_vect <-state.name;
-```
 
-```{r}
 # Find number of daily new cases and deaths by state
 i <-1
 
@@ -139,9 +195,14 @@ for (val in states_vect)
     df1 <- dum
   }
   i <- i+1
+  rm(dum)
 }
 # final new data frame
 state_data2 <- df1
+
+#calculate per capita case and death rates
+state_data2$pc_new_cases <- state_data2$new_cases / state_data2$Population
+state_data2$pc_new_deaths <- state_data2$new_deaths / state_data2$Population
 
 # extracting year and month
 month <- data.frame(format(state_data2$date,format="%m/%y"))
@@ -152,20 +213,24 @@ month <- data.frame(format(state_data2$date,format="%m/%y"))
 state_data2<-bind_cols(state_data2,month)
 
 # sorting columns
-state_data3 <- state_data2[,c(1,8,2,4,6,5,7)]
+state_data3 <- state_data2[,c(1,14,2:13)]
 
 # renaming columns
 names(state_data3)[2] <- "month"
 
-# Calculate avg cases for each state
-state_mnthly_cases = as.data.table(state_data3)[, mean(new_cases), by = .(month,state)]
-names(state_mnthly_cases)[3] <- "avg_cases"
+# Calculate pc avg cases for each state
+state_mnthly_cases = as.data.table(state_data3)[, mean(pc_new_cases), by = .(month,state, Region,Density2)]
+names(state_mnthly_cases)[5] <- "avg_pc_cases"
+state_mnthly_cases$Density2 = as.factor(state_mnthly_cases$Density2)
+names(state_mnthly_cases)[4] <- "Density"
 
 # Calculate avg deaths for each state
-state_mnthly_deaths = as.data.table(state_data3)[, mean(new_deaths), by = .(month,state)]
-names(state_mnthly_deaths)[3] <- "avg_deaths"
+state_mnthly_deaths = as.data.table(state_data3)[, mean(pc_new_deaths), by = .(month,state,Region,Density2)]
+names(state_mnthly_deaths)[5] <- "avg_pc_deaths"
+state_mnthly_deaths$Density2 = as.factor(state_mnthly_deaths$Density2)
+names(state_mnthly_deaths)[4] <- "Density"
 
-# Boxplot of Monthly Cummulative Cases by State
+# Boxplot of Monthly Cumulative Cases by State
 
 # getting dates in order
 dum = unique(state_mnthly_cases$month)
@@ -173,13 +238,44 @@ state_mnthly_cases$month <- factor(state_mnthly_cases$month , levels=dum)
 state_mnthly_deaths$month <- factor(state_mnthly_deaths$month , levels=dum)
 
 # plotting below
-mnthly_case_bplot = ggplot(state_mnthly_cases,aes(month, avg_cases)) + geom_boxplot() 
-mnthly_case_bplot + labs(y = "Mean Daily Cases by State",
-                   title = "Box Plot of Monthly Covid-19 Cases by State")
+# No coloring
+mnthly_case_bplot = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot() 
+mnthly_case_bplot + labs(y = "Mean Per Capita Daily Cases by State",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by State") 
 
-mnthly_death_bplot = ggplot(state_mnthly_deaths,aes(month, avg_deaths)) + geom_boxplot() 
-mnthly_death_bplot + labs(y = "Mean Daily Deaths by State",
-                   title = "Box Plot of Monthly Covid-19 Deaths by State")              
+mnthly_death_bplot = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + geom_boxplot() 
+mnthly_death_bplot + labs(y = "Mean Per Capita Daily Deaths by State",x = "Month",
+                   title = "Box Plot of Monthly Capita Covid-19 Deaths by State")  
+
+# Region Map
+all_states <- map_data("state")
+all_states$region <- str_to_title(all_states$region)  
+stateData <- merge(all_states,states_info,by.x="region",by.y = "Name" )
+
+regionplot <- ggplot()+geom_polygon(data=stateData,aes(x=long, y=lat, group = group, fill=Region),color="grey50")+coord_map()
+regionplot
+
+# Color by region
+mnthly_case_bplot2 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot(aes(color = Region)) 
+mnthly_case_bplot2 + labs(y = "Mean Per Capita Daily Cases by Region",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Region")  
+
+mnthly_death_bplot2 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
+geom_boxplot(aes(color = Region)) 
+mnthly_death_bplot2 + labs(y = "Mean Daily Per Capita Deaths by Region",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Region") 
+# Color by density
+mnthly_case_bplot3 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot(aes(color = Density)) 
+mnthly_case_bplot3 + labs(y = "Mean Per Capita Daily Cases by Density",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Density",fill = "Density [pop/mi^2]")  
+
+mnthly_death_bplot3 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
+geom_boxplot(aes(color = Density)) 
+mnthly_death_bplot3 + labs(y = "Mean Daily Per Capita Deaths by Desnsity",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Density",fill = "Density [pop/mi^2]") 
 ```
 ```{r}
 regions <- state.region
@@ -191,13 +287,26 @@ states_info <- data.frame("Name" = states_vect,"Region" = regions,"Pop"=demograp
 
 ```{r}
 options
-par(mfrow=c(2,2))
+#par(mfrow=c(2,1))
 for (val in states_vect)
 {
   # subset by state
-  dum <- subset(state_data2, state == val)
-  plot(dum$date,dum$new_cases,"l",  xlab="Date", ylab="Dly Cases")
+  dum <- subset(state_data3, state == val)
+  
+    if (val == "Alabama"){
+  plot(dum$date,dum$pc_new_cases,"l",  xlab="Date", ylab="Dly Per Capita Cases",ylim=c(0,0.25e-2),cex=3/4)
+  par(new = TRUE)
+  plot(dum$date,dum$pc_new_deaths,"l",  xlab="", ylab="",axes = FALSE,col=rgb(red = 1, green = 0, blue = 0, alpha = 0.5),ylim=c(0,0.1e-3))
+  axis(side=4, col.axis = "dark red",col.ticks = "dark red", ylim=c(0,0.1e-3))
+  mtext("Daily \n Per Capita Deaths",side=4,line=3, col = "dark red",cex=2/3)
   title(val)
+  }else{
+    
+  plot(dum$date,dum$pc_new_cases,"l",  xlab="", ylab="",ylim=c(0,0.25e-2))
+  par(new = TRUE)
+  plot(dum$date,dum$pc_new_deaths,"l",  xlab="", ylab="",axes = FALSE,col=rgb(red = 1, green = 0, blue = 0, alpha = 0.5), ylim=c(0,0.1e-3))
+  axis(side=4, col.axis = "dark red",col.ticks = "dark red")
+  title(val)}
 }
 ```
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
