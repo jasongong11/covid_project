@@ -373,9 +373,9 @@ Model Development Process\
 
 ## Cluster Analysis
 
-\begin
+\begin{center}
 \newpage
-\end
+\end{center}
 
 # Results
 
