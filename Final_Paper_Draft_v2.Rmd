@@ -31,7 +31,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Covid-19 is a novel, highly contagious, acute respiratory virus that was first identified in December 2019 in Wuhan, China. Over the course of the following 14 months, this virus spread rapidly to every corner of the globe, becoming one of the deadliest pandemics in recorded history. In the United States, the first confirmed Covid-19 case was identified in January 2020 and by mid-March there were confirmed cases in every single state and North American territory. In the midst of this rapid pandemic spread, epidemiologists and modelers struggled to accurately forecast the spatial and temporal trends in cases and deaths. However, with regularly updated, publicly-available covid tracking data, a sufficient amount of data now exists to retroactively examine how cases and deaths evolved over the course of this 14 month period. This study utilizes the New York Times Covid Tracking Data to statistically analyze trends in the timeseries of Covid-19 cases and deaths as well as the spatial development of cases at the state level across the united states using cluster analysis. 
 
-# Methodology
+# Data Description
 
 ## Data Sources
 
@@ -43,9 +43,10 @@ All data analysis and visualization for this study was conducted in RStudio. The
 
 # Exploratory Data Analysis
 
-### Timeseries Visualization
+## Timeseries Visualization
 
-An initial exploratory data analysis (EDA) was conducted to both elucidate trends and characteristics of the dataset and to guide the model development process. To better understand the temporal evolution of daily new cases and deaths in the US, a timeseries for both of these parameters was first generated (Figure 1).  The timeseries of daily US Covid-19 cases depicts four distinct regimes in the change in daily covid 19 cases throughout the course of the pandemic. From March through the end of May 2020, the number of cases grew logistically; growing exponentially in March before asymptoting at a maximum daily new case load of 25,000-30,000 individuals through April and May. Similar but larger magnitude growth trends are evident in June through August, asymptoting around 65,000 daily new cases, and October through December 2020, asymptoting around 250,000 daily new cases. Note that the sharp drop in cases around the end of December is likely a reflection of a decline in reporting around the winter holidays and not a reflection of the actual drop in the real case load. From January 2021 onwards, the case trend differs from the early regimes, with a noticeable linear decline in the reported case numbers through December. Another interesting aspect of this dataset is the seven-day oscillation in the case numbers. New case numbers always tend to be lower on Saturdays and Sundays than during weekdays, reflecting the fact that many labs do not report case numbers on the weekend. The timeseries of daily Covid-19 deaths shows a similar logistic growth rate to the case rate in the early spring 2020. However, the number of deaths, drops significantly from mid-May 2020 and oscillates around 1000 cases a days until November 2020 when the number of daily new deaths rises again, fluctuating around 3000 deaths per days. The seven oscillations, observed in the timeseries of new cases, is even more prominent in the death data, with significant drops in reported deaths during the weekend. This initial visualization and review makes evident that that there are clear similarities and differences in the functional trends between both datasets.
+An initial exploratory data analysis (EDA) was conducted to both elucidate trends and characteristics of the dataset and to guide the model development process. To better understand the temporal evolution of daily new cases and deaths in the US, a timeseries for both of these parameters was first generated (Figure 1).  The timeseries of daily US Covid-19 cases depicts four distinct regimes in the change in daily covid 19 cases throughout the course of the pandemic. From March through the end of May 2020, the number of cases grew logistically; growing exponentially in March before asymptoting at a maximum daily new case load of 25,000-30,000 individuals through April and May. Similar but larger magnitude growth trends are evident in June through August, asymptoting around 65,000 daily new cases, and October through December 2020, asymptoting around 250,000 daily new cases. Note that the sharp drop in cases around the end of December is likely a reflection of a decline in reporting around the winter holidays and not a reflection of the actual drop in the real case load. From January 2021 onwards, the case trend differs from the early regimes, with a noticeable linear decline in the reported case numbers through December. Another interesting aspect of this dataset is the seven-day oscillation in the case numbers. New case numbers always tend to be lower on Saturdays and Sundays than during weekdays, reflecting the fact that many labs do not report case numbers on the weekend. The timeseries of daily Covid-19 deaths shows a similar logistic growth rate to the case rate in the early spring 2020. However, the number of deaths, drops significantly from mid-May 2020 and oscillates around 1000 cases a days until November 2020 when the number of daily new deaths rises again, fluctuating around 3000 deaths per days. The seven oscillations, observed in the timeseries of new cases, is even more prominent in the death data, with significant drops in reported deaths during the weekend. This initial visualization and review makes evident that that there are clear similarities and differences in the functional trends between both datasets.\  
+\  
 
 ```{r, echo = FALSE}
 # read in NYtimes Covid data tables 
@@ -110,7 +111,8 @@ us_data$season = as.factor(us_data$season)
 # Value used to transform the data
 p1 <- ggplot(us_data, aes(x = date, y = new_cases)) +
             geom_line(color = "darkred") +
-  labs(title="US Covid-19 Cases and Deaths",  y="Daily New Cases", x="")
+  labs(title="US Covid-19 Cases and Deaths",  y="Daily New Cases", x="")+
+  theme(plot.title = element_text(hjust = 0.5))
   
 
 p2 <- ggplot(us_data, aes(x = date, y = new_deaths)) +
@@ -125,13 +127,14 @@ Figure 1 - Timeseries of daily new Covid-19 cases (top) and deaths (bottom) in t
 
 ## Case-Death Scatter Plot
 
-To further examine how the relationship between daily new US covid cases and deaths changed through time, a scatter plot of these two variables was generated (Figure 2). Having previously identified four distinct regimes in the case growth rate, these points were colored by the season for each observation. The scatter plot further highlights the different trends in the daily case to death ratios during each of these time periods. In the spring 2020, there is an significantly evident positive correlation in the case to death ratio. The points in this season are all closely clustered with the deaths growing exponentially with cases. In the summer 2020 data, there is no clear positive or negative trend in the correlation between the two parameters with the points scatter roughly in a circle. In the fall season, again a positive correlation is evident, however the case to death ratio is four to five times that observed in the spring. Finally in the winter (December 2020 – February 2021), the ratio of cases to deaths decreases but is still positive.  
-
-```{r,echo=FALSE, fig.width=10,fig.height=11}
+To further examine how the relationship between daily new US covid cases and deaths changed through time, a scatter plot of these two variables was generated (Figure 2). Having previously identified four distinct regimes in the case growth rate, these points were colored by the season for each observation. The scatter plot further highlights the different trends in the daily case to death ratios during each of these time periods. In the spring 2020, there is an significantly evident positive correlation in the case to death ratio. The points in this season are all closely clustered with the deaths growing exponentially with cases. In the summer 2020 data, there is no clear positive or negative trend in the correlation between the two parameters with the points scatter roughly in a circle. In the fall season, again a positive correlation is evident, however the case to death ratio is four to five times that observed in the spring. Finally in the winter (December 2020 – February 2021), the ratio of cases to deaths decreases but is still positive.   
+  
+```{r,echo=FALSE}
 # scatter plot comparison of Cases Vs Deaths
 gg <- ggplot(us_data,aes(x = new_cases, y = new_deaths, colour = season)) +
   geom_point() +
-   labs(title="Cases Vs Deaths",subtitle="US Country-wide Covid Counts",y="Daily Deaths", x="Daily Cases")
+   labs(title="Cases Vs Deaths (US-wide)",y="Daily Deaths", x="Daily Cases")+
+  theme(plot.title = element_text(hjust = 0.5))
 
 plot(gg)
 ```
@@ -140,7 +143,7 @@ Figure 2 - Scatterplot of daily new Covid-19 cases vs deaths in United States. P
 \end{center}
 
 ## State Case Rate Box Plots
-
+Description of box plots blah blah blah blah blah
 ```{r, echo = FALSE, fig.align="center"}
 ## Examining State Spatial Trends
 
@@ -271,7 +274,34 @@ state_mnthly_cases$month <- factor(state_mnthly_cases$month , levels=dum)
 state_mnthly_deaths$month <- factor(state_mnthly_deaths$month , levels=dum)
 
 # plotting below
+```
 
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+# boxplot of cases
+mnthly_case_bplot = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot() +
+  theme(plot.title = element_text(hjust = 0.5))
+mnthly_case_bplot + labs(y = "Mean Per Capita Daily Cases by State",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by State") 
+```
+\begin{center}
+Figure 3 - Boxplot of daily average new Covid-19 cases by state across US. Data is binned by month
+\vspace{5mm} %5mm vertical space
+\end{center}
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+# boxplot of deaths
+mnthly_death_bplot = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + geom_boxplot() +
+  theme(plot.title = element_text(hjust = 0.5))
+mnthly_death_bplot + labs(y = "Mean Per Capita Daily Deaths by State",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by State")  
+
+```
+\begin{center}
+Figure 4 - Boxplot of daily average new Covid-19 deaths by state across US. Data is binned by month
+\end{center}
+
+## Regional Trends
+```{r, echo = FALSE}
 # Region Map
 all_states <- map_data("state")
 all_states$region <- str_to_title(all_states$region)  
@@ -280,19 +310,179 @@ stateData <- merge(all_states,states_info,by.x="region",by.y = "Name" )
 regionplot <- ggplot()+geom_polygon(data=stateData,aes(x=long, y=lat, group = group, fill=Region),color="grey50")+coord_map()
 regionplot
 ```
+\begin{center}
+Figure 5 - Map of US States grouped by region \pagebreak
+\end{center}
 
-```{r, echo = FALSE}
-# boxplot of cases
-mnthly_case_bplot = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
-geom_boxplot() 
-mnthly_case_bplot + labs(y = "Mean Per Capita Daily Cases by State",x = "Month",
-                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by State") 
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+# Color by region
+mnthly_case_bplot2 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot(aes(color = Region)) 
+mnthly_case_bplot2 + labs(y = "Mean Per Capita Daily Cases by Region",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Region")  
 ```
 
-```{r, echo = FALSE}
-# boxplot of deaths
-mnthly_death_bplot = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + geom_boxplot() 
-mnthly_death_bplot + labs(y = "Mean Per Capita Daily Deaths by State",x = "Month",
-                   title = "Box Plot of Monthly Capita Covid-19 Deaths by State")  
+\begin{center}
+Figure 6 - Boxplot of daily average new Covid-19 cases by state across US. Data is binned by month and categorized by region.
+\vspace{5mm} %5mm vertical space
+\end{center}
 
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+mnthly_death_bplot2 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
+geom_boxplot(aes(color = Region)) 
+mnthly_death_bplot2 + labs(y = "Mean Daily Per Capita Deaths by Region",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Region") 
 ```
+
+\begin{center}
+Figure 7 - Boxplot of daily average new Covid-19 deaths by state across US. Data is binned by month and categorized by region. \\
+\end{center}
+
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+# Color by density
+mnthly_case_bplot3 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot(aes(color = Density)) 
+mnthly_case_bplot3 + labs(y = "Mean Per Capita Daily Cases by Density",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Density",fill = "Density [pop/mi^2]")  
+```
+
+\begin{center}
+Figure 8 - Density Case Boxplot
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+mnthly_death_bplot3 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
+geom_boxplot(aes(color = Density)) 
+mnthly_death_bplot3 + labs(y = "Mean Daily Per Capita Deaths by Density",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Density",fill = "Density [pop/mi^2]") 
+```
+
+\begin{center}
+Figure 9 - Density Death Boxplot
+\newpage
+\end{center}
+
+
+## Autoregressive (AR) Forecast Model
+Description AR Model
+Model Development Process
+```{r,echo = FALSE,fig.align = 'center'}
+# Timeseries Analysis
+
+# Converting to timeseries
+new_cases.ts <- ts(us_data$new_cases,frequency = 7)
+new_deaths.ts <- ts(us_data$new_deaths,frequency = 7)
+
+## CASES
+## plot the ts
+#autoplot(new_cases.ts)+
+#  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Cases in US") +
+# ggtitle("Timeseries of New Covid 19 Cases in US") 
+
+## Decompose
+components.ts = decompose(new_cases.ts)
+plot(components.ts,xlab = "Weeks since March 1st, 2020")
+```
+\begin{center}
+Figure 10 - Decomposition of Covid Case Data
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+```{r}
+# Test for Stationarity
+tseries::adf.test(new_cases.ts)
+```
+
+```{r,echo = FALSE,fig.align = 'center'}
+## Remove Non Stationrity through differencing
+diff_new_cases.ts <- diff(new_cases.ts)
+
+components.ts2 = decompose(diff_new_cases.ts)
+plot(components.ts2,xlab = "Weeks since March 1st, 2020")
+```
+
+```{r}
+# Test for Stationarity with differencing
+tseries::adf.test(diff(new_cases.ts))
+```
+
+```{r,echo = FALSE}
+## examine autocorrelation function
+new_cases.ts %>% diff() %>% ggtsdisplay(main="")
+```
+
+```{r,echo=FALSE, results="hide"}
+## Calculate optimal coefficient for model
+auto.arima(new_cases.ts, trace=TRUE) 
+
+## Determining AR model
+fitARIMA_cases <- arima(new_cases.ts, order=c(0,1,1),seasonal = list(order = c(0,0,2), period = 7),method="ML")
+```
+### Checking Residuals
+```{r,echo=FALSE, results="hide"}
+
+## Check residuals
+checkresiduals(fitARIMA_cases)
+```
+### Visualizing Forecast
+```{r,echo=FALSE}
+## plot forecast
+autoplot(forecast(fitARIMA_cases))+
+  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Cases in US") +
+  ggtitle("AR Lag 7 Model for Covid Cases")
+```
+
+## DEATHS
+```{r,echo=FALSE}
+## Decompose
+components.ts = decompose(new_deaths.ts)
+plot(components.ts,xlab = "Weeks since March 1st, 2020")
+```
+
+```{r}
+# Test for Stationarity
+tseries::adf.test(new_deaths.ts)
+```
+
+```{r,echo=FALSE}
+## Remove Non Stationrity through differencing
+diff_new_deaths.ts <- diff(new_deaths.ts)
+
+components.ts2 = decompose(diff_new_deaths.ts)
+plot(components.ts2,xlab = "Weeks since March 1st, 2020")
+````
+
+```{r}
+# using differencing method
+tseries::adf.test(diff(new_deaths.ts))
+```
+
+```{r,echo=FALSE, results="hide"}
+## examine autocorrelation function
+new_deaths.ts %>% diff() %>% ggtsdisplay(main="")
+
+## Calculate optimal coefficient for model
+auto.arima(new_deaths.ts, trace=TRUE) 
+
+## Determining AR model
+fitARIMA_deaths <- arima(new_deaths.ts, order=c(1,0,2),seasonal = list(order = c(0,1,1), period = 7),method="ML")
+```
+
+```{r,echo=FALSE, results="hide"}
+## Check residuals
+checkresiduals(fitARIMA_deaths)
+```
+
+```{r,echo=FALSE}
+## plot forecast
+autoplot(forecast(fitARIMA_deaths))+
+  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Deaths in US") +
+  ggtitle("AR Lag 7 Model for Covid Deaths")
+```
+
+## Cluster Analysis
+
+# Results
+
+## AR Forecast Model
