@@ -366,24 +366,91 @@ Figure 9 - Density Death Boxplot
 
 # Algorithms
 
-## ARIMA Forecast Model
+## ARIMA Timeseries Forecast Model
 
 Utilizing the timeseries data of US Covid-19 cases and deaths an ARIMA (Autoregressive Integrated Moving Average) forecast model was developed to predict the change in these two parameters over the subsequent 30 days following the final day that data was reported in this dataset, February 15th, 2021. For this analysis, univariate time series forecasting was conducted; only previous values of a single parameter were used to forecast future parameter values. ARIMA is a family of linear regression models that seek to statistically ‘explain’ trends in time series data and forecast the future. This model combines the mathematical formulations of two less sophisticated models: a simple autoregressive model (AR) and a moving average (MA) model. In a purely autoregressive model, a modeled value at time t ($Y_t$) is soley a function of previous lags and modeled coefficients. 
 
-\begin{math}
-Y_t = \alpha + \beta_1 Y_{t-1} + \beta_2 Y_{t-2} 
-\end{math}
+\begin{center}
+
+\vspace{5mm} %5mm vertical space
+$$Y_t = \alpha + \beta_1 Y_{t-1} + \beta_2 Y_{t-2} + \ldots + \beta_p Y_{t-p} + \epsilon_1$$
+\vspace{5mm} %5mm vertical space
+\end{center}
 
 Where  $\beta_1$ is the coefficient of lag 1 that the model estimates, $\alpha$ is in the intercept term and $\epsilon$ is the model error
 
 Conversely, in a pure MA model, $Y_t$ is dependent only on the lagged forecast errors ($\epsilon_t$)   
 
-\begin{math}
-Y_t = \alpha + \epsilon_t + \theta_1 \epsilon_{t-1} + \theta_2 \epsilon_{t-2} + \ldots + \theta_p \epsilon{t-p}
-\end{math}
+\begin{center}
+\vspace{5mm} %5mm vertical space
+$$Y_t = \alpha + \epsilon_t + \theta_1 \epsilon_{t-1} + \theta_2 \epsilon_{t-2} + \ldots + \theta_q \epsilon_{t-q}$$
+\vspace{5mm} %5mm vertical space
+\end{center}
 
+Combining these two equations, the ARIMA model formulation can be derived
+\begin{center}
+\vspace{5mm} %5mm vertical space
+$$Y_t = \alpha + \beta_1 Y_{t-1} + \beta_2 Y_{t-2} + \ldots + \beta_p Y_{t-p}\epsilon_p + \epsilon_t + \theta_1 \epsilon_{t-1} + \theta_2 \epsilon_{t-2} + \ldots + \theta_q \epsilon_{t-q}$$
+\vspace{5mm} %5mm vertical space
+\end{center}
 
-Model Development Process\
+### ARIMA US Covid Cases Model Development Process
+A cursory review of the timeseries in US Covid cases (Figure 1) indicates that the rates of these parameters are not a stationary process. It is evident that there are three distinct periods of increasing trends followed by a decline in 2021. Decomposing this timeseries into long term trends and seasonal variation can provide further indication if this is a non-stationary process. Figure 10 shows the raw US covid case timeseries data along with the decomposed trend, seasonal variation and white noise in the dataset.
+
+## AR Covid Case Forecast Model
+```{r,echo = FALSE,fig.align = 'center'}
+# Timeseries Analysis of Cases
+
+# Converting to timeseries
+new_cases.ts <- ts(us_data$new_cases,frequency = 7)
+new_deaths.ts <- ts(us_data$new_deaths,frequency = 7)
+
+## Decompose
+components.ts = decompose(new_cases.ts)
+plot(components.ts,xlab = "Weeks since March 1st, 2020")
+```
+\begin{center}
+Figure 10 - Decomposed US Covid Case Timeseries Data
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+This visualization makes evident that this a non-stationary process. This is validated by running an augmented Dickey-Fuller (adf) Test where the the alternative hypothesis is that the dataset is stationary.
+
+```{r}
+# Test for Stationarity
+tseries::adf.test(new_cases.ts)
+```
+
+The large p-value calculated in this test thus proves that the alternative hypothesis that the timeseries is stationary cannot be accepted.For ARIMA model to be valid, the non-stationary aspects of this dataset must thus be removed. This can be accomplished by simply taking the difference between each data point. A plot of the decomposed difference-stationarized case timeseries dataset and the corresponding results of the adf test shown below. This dataset now no longer has any long term trends and the p-value for the stationary hypothesi is >0.01 so it is significant.
+
+```{r,echo = FALSE,fig.align = 'center'}
+## Remove Non Stationrity through differencing
+diff_new_cases.ts <- diff(new_cases.ts)
+
+components.ts2 = decompose(diff_new_cases.ts)
+plot(components.ts2,xlab = "Weeks since March 1st, 2020")
+```
+\begin{center}
+Figure 10 - Decomposition of Difference Covid Case Data
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+```{r}
+# Test for Stationarity with differencing
+tseries::adf.test(diff(new_cases.ts))
+```
+
+The next step in the model development process is to find the optimal parameters (p,d,q) for the ARIMA forecast model. Each of these parameters correspond to the AR order, degree of differing and MA order of the model respectively. This can be accomplished by visualizing the autocorrelation function (ACF) and partial autocorrelation function (PCF) for the dataset (Figure 11). The ACF and PCF plots depict what lags have the highest correlation to the a given output. These plots both clearly shown that a seven day lag has and the highest correlation.
+
+```{r,echo = FALSE}
+## examine autocorrelation function
+new_cases.ts %>% diff() %>% ggtsdisplay(main="")
+```
+\begin{center}
+Figure 11 - Autocorelation function and Partial Autocorrelation Function for difference covid case data
+\vspace{5mm} %5mm vertical space
+\end{center}
+
 
 ## Cluster Analysis
 
@@ -393,35 +460,6 @@ Model Development Process\
 
 # Results
 
-## AR Covid Case Forecast Model
-```{r,echo = FALSE,fig.align = 'center'}
-# Timeseries Analysis
-
-# Converting to timeseries
-new_cases.ts <- ts(us_data$new_cases,frequency = 7)
-new_deaths.ts <- ts(us_data$new_deaths,frequency = 7)
-
-## CASES
-## plot the ts
-#autoplot(new_cases.ts)+
-#  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Cases in US") +
-# ggtitle("Timeseries of New Covid 19 Cases in US") 
-
-## Decompose
-components.ts = decompose(new_cases.ts)
-plot(components.ts,xlab = "Weeks since March 1st, 2020")
-```
-\begin{center}
-Figure 10 - Decomposition of Covid Case Data
-\vspace{5mm} %5mm vertical space
-\end{center}
-
-### Test for Stationarity
-```{r}
-# Test for Stationarity
-tseries::adf.test(new_cases.ts)
-```
-It is not stationary!\
 
 ```{r,echo = FALSE,fig.align = 'center'}
 ## Remove Non Stationrity through differencing
@@ -440,14 +478,7 @@ Figure 10 - Decomposition of Difference Covid Case Data
 tseries::adf.test(diff(new_cases.ts))
 ```
 This data is stationary!\
-```{r,echo = FALSE}
-## examine autocorrelation function
-new_cases.ts %>% diff() %>% ggtsdisplay(main="")
-```
-\begin{center}
-Figure 11 - Autocorelation function and Partial Autocorrelation Function for difference covid case data
-\vspace{5mm} %5mm vertical space
-\end{center}
+
 
 ```{r,echo=FALSE, results="hide"}
 ## Calculate optimal coefficient for model
