@@ -29,7 +29,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Introduction
 
-Covid-19 is a novel, highly contagious, acute respiratory virus that was first identified in December 2019 in Wuhan, China. Over the course of the following 14 months, this virus spread rapidly to every corner of the globe, becoming one of the deadliest pandemics in recorded history. In the United States, the first confirmed Covid-19 case was identified in January 2020 and by mid-March there were confirmed cases in every single state and North American territory. In the midst of this rapid pandemic spread, epidemiologists and modelers struggled to accurately forecast the spatial and temporal trends in cases and deaths. However, with regularly updated, publicly-available covid tracking data, a sufficient amount of data now exists to retroactively examine how cases and deaths evolved over the course of this 14 month period. This study utilizes the New York Times Covid Tracking Data to statistically analyze trends in the timeseries of Covid-19 cases and deaths as well as the spatial development of cases at the state level across the united states using cluster analysis. 
+Covid-19 is a novel, highly contagious, acute respiratory virus that was first identified in December 2019 in Wuhan, China. Over the course of the following 14 months, this virus spread rapidly to every corner of the globe, becoming one of the deadliest pandemics in recorded history. In the United States, the first confirmed Covid-19 case was identified in January 2020 and by mid-March there were confirmed cases in every single state and North American territory. In the midst of this rapid pandemic spread, epidemiologists and modelers struggled to accurately forecast the spatial and temporal trends in cases and deaths. However, with regularly updated, publicly-available covid tracking data, a sufficient amount of data now exists to retroactively examine how cases and deaths evolved over the course of this 14 month period. This study utilizes the New York Times Covid Tracking Data to statistically analyze trends in the timeseries of Covid-19 cases and deaths as well as the spatial development of cases at the state level across the united states. Through the us of this timeseries data, an autoregressive integrated moving average (ARIMA) forecast model is employed to predict future cases and deaths at the national level. Furthermore cluster analysis is employed to find clustering trends in cases and deaths at the state level. Demographic data is further incoropated to examine the signficance of different factors in the model development process. 
 
 # Data Description
 
@@ -375,6 +375,12 @@ Y_t = \alpha + \beta_1 Y_{t-1} + \beta_2 Y_{t-2}
 \end{math}
 
 Where  $\beta_1$ is the coefficient of lag 1 that the model estimates, $\alpha$ is in the intercept term and $\epsilon$ is the model error
+
+Conversely, in a pure MA model, $Y_t$ is dependent only on the lagged forecast errors ($\epsilon_t$)   
+
+\begin{math}
+Y_t = \alpha + \epsilon_t + \theta_1 \epsilon_{t-1} + \theta_2 \epsilon_{t-2} + \ldots + \theta_p \epsilon{t-p}
+\end{math}
 
 
 Model Development Process\
