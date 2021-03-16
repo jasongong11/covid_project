@@ -15,7 +15,7 @@ library(ggplot2)
 library(scales)
 library(gridExtra)
 # library(forecast)
-library(aTSA)
+# library(aTSA)
 
 # read in NYtimes Covid data tables 
 
@@ -177,4 +177,27 @@ AIC(MA_cases)
 # Find BIC of AR
 AIC(AR_cases)
 
-tseries::adf.test(diff(log(new_cases.ts)), alternative="stationary", k=0)
+############################################
+# Test for Stationarity
+tseries::adf.test(new_cases.ts)
+
+# using differencing method
+tseries::adf.test(diff(new_cases.ts))
+
+diff_new_cases.ts <- diff(new_cases.ts)
+acf(diff_new_cases.ts, lag.max = 30)
+
+#Fitting the AR Model to the time series
+AR_diff_cases <- arima(diff_new_cases.ts, order = c(1,0,0))
+print(AR_diff_cases)
+
+# Plotting with Model
+ts.plot(new_cases.ts)
+AR_cases_fit <- new_cases.ts - residuals(AR_diff_cases)
+points(AR_cases_fit, type = "l", col = 2, lty = 2)
+
+# Forecasting
+fit <- arima(diff_new_cases.ts, order = c(7, 1, 0))
+
+pred <- predict(fit, n.ahead = 30)
+ts.plot(new_cases.ts,2.718^pred$pred, lty = c(1,3))

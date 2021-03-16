@@ -11,3 +11,6 @@ forcats
 data.table
 scales
 gridExtra
+zoo
+lmtest
+forecast

@@ -1,35 +1,22 @@
 ---
-output: 
-  pdf_document:
-    citation_package: natbib
-    keep_tex: true
-    fig_caption: true
-    latex_engine: pdflatex
-    template: svm-latex-ms.tex
-bibliography: master.bib
-header-includes:
-  -  \usepackage{hyperref}
-biblio-style: apsr
 title: "Statistical Analysis of Temporal and Spatial Trends in US Covid-19 Cases and Deaths"
-thanks: 
-author:
-- name: Jason Gong and Micah Swann
-  affiliation: University of California, Davis
-abstract: "This study provides a statistical analysis of the spatial and temporal trends in US Covid-19 case from March 2020 - February 2021."
-date: "`r format(Sys.time(), '%B %d, %Y')`"
-geometry: margin=1in
-fontfamily: mathpazo
-fontsize: 11pt
-# spacing: double
-endnote: no
+author: "Jason Gong and Micah Swann"
+affiliation: "UC Davis"
+output: pdf_document
 ---
 
-```{r,warning=FALSE,message=FALSE}
-# packages required
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,warning=FALSE,message=FALSE, include = FALSE}
+## REQUIRED PACKAGES
 # install.packages("gridExtra")
-#packages = c("gtrendsR","tidyverse","usmap")
-#install.packages("mapproj")
+# packages = c("gtrendsR","tidyverse","usmap")
+# install.packages("mapproj")
 # importing libraries
+
+## REQUIRED LIBRARIES
  library(dplyr)
  library(tidyverse)
  library(data.table)
@@ -39,18 +26,6 @@ endnote: no
  library(lmtest)
  library(forecast)
 ```
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(cache=TRUE,
-                      message=FALSE, warning=FALSE,
-                      fig.path='figs/',
-                      cache.path = '_cache/',
-                      fig.process = function(x) {
-                      x2 = sub('-\\d+([.][a-z]+)$', '\\1', x)
-                      if (file.rename(x, x2)) x2 else x
-                      })
-```
-
 
 # Introduction
 
@@ -321,112 +296,3 @@ mnthly_death_bplot + labs(y = "Mean Per Capita Daily Deaths by State",x = "Month
                    title = "Box Plot of Monthly Capita Covid-19 Deaths by State")  
 
 ```
-
-\begin{center}
-Figure 3 - Map of US Regions
-\end{center}
-
-
-```{r, echo = FALSE}
-# Color by region
-mnthly_case_bplot2 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
-geom_boxplot(aes(color = Region)) 
-mnthly_case_bplot2 + labs(y = "Mean Per Capita Daily Cases by Region",x = "Month",
-                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Region")  
-```
-
-\begin{center}
-Figure 4 - Boxplot
-\end{center}
-
-```{r, echo = FALSE}
-mnthly_death_bplot2 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
-geom_boxplot(aes(color = Region)) 
-mnthly_death_bplot2 + labs(y = "Mean Daily Per Capita Deaths by Region",x = "Month",
-                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Region") 
-```
-
-\begin{center}
-Figure 4 - Boxplot
-\end{center
-
-```{r, echo = FALSE}
-# Color by density
-mnthly_case_bplot3 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
-geom_boxplot(aes(color = Density)) 
-mnthly_case_bplot3 + labs(y = "Mean Per Capita Daily Cases by Density",x = "Month",
-                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Density",fill = "Density [pop/mi^2]")  
-```
-
-\begin{center}
-Figure 4 - Boxplot
-\end{center
-
-```{r, echo = FALSE}
-mnthly_death_bplot3 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
-geom_boxplot(aes(color = Density)) 
-mnthly_death_bplot3 + labs(y = "Mean Daily Per Capita Deaths by Density",x = "Month",
-                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Density",fill = "Density [pop/mi^2]") 
-```
-
-\begin{center}
-Figure 4 - Boxplot
-\end{center
-
-## Clustering Analysis
-
-# Autoregressive (AR) Forecast Model
-
-Description of forecast models
-
-Decomposition
-```{r,echo = False}
-# Convert case and death dataframes to timeseries, setting frequency to 7 days
-new_cases.ts <- ts(us_data$new_cases,frequency = 7)
-new_deaths.ts <- ts(us_data$new_deaths,frequency = 7)
-
-## Decompose
-components.ts = decompose(new_cases.ts)
-plot(components.ts,xlab = "Weeks since March 1st, 2020")
-```
-
-
-```{r}
-# Test for Stationary
-tseries::adf.test(new_cases.ts)
-```
-
-
-```{r, echo = FALSE}
-## Remove Non Stationrity through differencing
-diff_new_cases.ts <- diff(new_cases.ts)
-
-components.ts2 = decompose(diff_new_cases.ts)
-plot(components.ts2,xlab = "Weeks since March 1st, 2020")
-```
-```{r}
-# using differencing method
-tseries::adf.test(diff(new_cases.ts))
-```
-
-```{r,.echo = FALSE}
-## examine autocorrelation function
-new_cases.ts %>% diff() %>% ggtsdisplay(main="")\
-```
-
-# Results
-# Conclusions
-
-# Appendix
-
-
-
-
-<!--
-# References
-\setlength{\parindent}{-0.2in}
-\setlength{\leftskip}{0.2in}
-\setlength{\parskip}{8pt}
-\vspace*{-0.2in}
-\noindent
--->
