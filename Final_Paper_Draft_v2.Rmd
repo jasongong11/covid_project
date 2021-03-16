@@ -366,9 +366,17 @@ Figure 9 - Density Death Boxplot
 
 # Algorithms
 
-## Autoregressive (AR) Forecast Model
+## ARIMA Forecast Model
 
-Description of AR Model\
+Utilizing the timeseries data of US Covid-19 cases and deaths an ARIMA (Autoregressive Integrated Moving Average) forecast model was developed to predict the change in these two parameters over the subsequent 30 days following the final day that data was reported in this dataset, February 15th, 2021. For this analysis, univariate time series forecasting was conducted; only previous values of a single parameter were used to forecast future parameter values. ARIMA is a family of linear regression models that seek to statistically ‘explain’ trends in time series data and forecast the future. This model combines the mathematical formulations of two less sophisticated models: a simple autoregressive model (AR) and a moving average (MA) model. In a purely autoregressive model, a modeled value at time t ($Y_t$) is soley a function of previous lags and modeled coefficients. 
+
+\begin{math}
+Y_t = \alpha + \beta_1 Y_{t-1} + \beta_2 Y_{t-2} 
+\end{math}
+
+Where  $\beta_1$ is the coefficient of lag 1 that the model estimates, $\alpha$ is in the intercept term and $\epsilon$ is the model error
+
+
 Model Development Process\
 
 ## Cluster Analysis
@@ -506,7 +514,7 @@ fitARIMA_deaths <- arima(new_deaths.ts, order=c(1,0,2),seasonal = list(order = c
 checkresiduals(fitARIMA_deaths)
 ```
 
-```{r,echo=FALSE,fig.width=5,fig.height=4,fig.align='center'}
+```{r,echo=FALSE,fig.width=7,fig.height=4,fig.align='center'}
 ## plot forecast
 autoplot(forecast(fitARIMA_deaths))+
   xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Deaths in US") +
@@ -514,3 +522,7 @@ autoplot(forecast(fitARIMA_deaths))+
 ```
 
 # Conclusions
+
+## Temporal Trends
+
+## Spatial Trends
