@@ -978,8 +978,11 @@ Based on our analysis, we found out that:
 
 # References
 Bergman, A., Sella, Y., Agre, P., & Casadevall, A. (2020). Oscillations in U.S. COVID-19 Incidence and Mortality Data Reflect Diagnostic and Reporting Factors. MSystems, 5(4), e00544-20. https://doi.org/10.1128/mSystems.00544-20
+
 Paparrizos, J., & Gravano, L. (2015, May). k-shape: Efficient and accurate clustering of time series. In Proceedings of the 2015 ACM SIGMOD International Conference on Management of Data (pp. 1855-1870).
+
 Petitjean, F., Ketterlin, A., & Gançarski, P. (2011). A global averaging method for dynamic time warping, with applications to clustering. Pattern recognition, 44(3), 678-693.
+
 Sardá-Espinosa, A. (2017). Comparing time-series clustering algorithms in r using the dtwclust package. R package vignette, 12, 41.
 
 \begin{center}

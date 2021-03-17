@@ -414,3 +414,334 @@ autoplot(forecast(fitARIMA_deaths))+
 - models reproduced long term trends as well as "artificial" oscillations in reporting numbers
 - this analysis could be improved by incorporating other parameters into a multivariate regression
 
+# Spatial Trend Anlysis
+## Does geographical distance influence the deaths and cases growth?
+- Smoothed the time series by 7-days sliding window averaging 
+- Applied a K-shape distance algorithm for both cases and deaths time series
+- Calculated geographical distances between any two states
+- Run a correlation between shape of time series and the geographical distances
+
+## Smoothed time series
+```{r make case and dealth matrix, include=FALSE}
+state_data2 <- state_data2 %>%
+  mutate(avg_new_cases = stats::filter(new_cases, filter=rep(1/7,7), side=1),
+         avg_new_deaths = stats::filter(new_deaths, filter=rep(1/7,7), side=1))
+
+
+ts_avg_case_matrix <- matrix(, nrow = length(states_vect), ncol = length(dates_vect))
+ts_avg_death_matrix <- matrix(, nrow = length(states_vect), ncol = length(dates_vect))
+
+for (i in 1:length(states_vect)) {
+  for (j in 1:length(dates_vect)) {
+    tryCatch({ts_avg_case_matrix[i,j] <- state_data2$avg_new_cases[(state_data2$state == states_vect[i] 
+                                                            & state_data2$date == dates_vect[j])]},
+                                    error=function(e){ts_avg_case_matrix[i,j] <- NA})
+    tryCatch({ts_avg_death_matrix[i,j] <- state_data2$avg_new_deaths[(state_data2$state == states_vect[i] &
+                                                             state_data2$date == dates_vect[j])]},
+                                    error=function(e){ts_avg_death_matrix[i,j] <- NA})
+  }
+}
+
+rownames(ts_avg_case_matrix) <- states_vect
+rownames(ts_avg_death_matrix) <- states_vect
+colnames(ts_avg_case_matrix) <- dates_vect
+colnames(ts_avg_death_matrix) <- dates_vect
+
+ts_avg_case_matrix <- ts_avg_case_matrix[ , colSums(is.na(ts_avg_case_matrix)) == 0]
+ts_avg_death_matrix <- ts_avg_death_matrix[ , colSums(is.na(ts_avg_death_matrix)) == 0]
+
+```
+```{r plot time series data, echo=FALSE, results="hide", message=FALSE, warning = FALSE, fig.width=8, fig.height=4}
+cl <- rainbow(50)
+
+par(mfrow=c(1,2)) 
+plot(0,0,xlim = c(0,330),ylim = c(0,10),type = "n", main= 'Cases time series data for each state', xlab='Time', ylab='Log num of cases')
+for (i in 1:50){
+    lines(log(ts_avg_case_matrix[i,]),col = cl[i], type = 'l')
+}
+
+plot(0,0,xlim = c(0,330),ylim = c(0,8),type = "n", main='Deaths time series data for each state', xlab='Time', ylab='Log num of deaths')
+for (i in 1:50){
+    lines(log(ts_avg_death_matrix[i,]),col = cl[i], type = 'l')
+}
+```
+
+## K-shape Distance Matrix for time series data
+```{r SBD distance matrix and geographical distance matrix, echo=FALSE, include=FALSE}
+suppressPackageStartupMessages(library(dtw))
+
+dtw_distmat_case <- proxy::dist(ts_avg_case_matrix, method = "SBD", 
+                           upper = TRUE, diag = TRUE)
+dtw_distmat_death <- proxy::dist(ts_avg_death_matrix, method = "SBD", 
+                           upper = TRUE, diag = TRUE)
+
+dtw_distmat_case <- as.matrix(dtw_distmat_case)
+dtw_distmat_death <- as.matrix(dtw_distmat_death)
+us_distance_matrix <- as.matrix(dist(cbind(state.center$x, state.center$y)))
+rownames(us_distance_matrix) <- rownames(dtw_distmat_death)
+colnames(us_distance_matrix) <- colnames(dtw_distmat_death)
+df <- data.frame(case=dtw_distmat_case[lower.tri(dtw_distmat_case, diag=FALSE)],
+                 death=dtw_distmat_death[lower.tri(dtw_distmat_death, diag=FALSE)],
+                 geo_dis=us_distance_matrix[lower.tri(us_distance_matrix)])
+```
+```{r echo=FALSE, fig.width=4, fig.height=3}
+heatmap(dtw_distmat_case, Colv = NA, Rowv = NA, symm =T,  cex.main=0.8, margins = c(3, 3), 
+        main = 'K-shape distance cases', cexCol = 0.5, cexRow = 0.5)
+heatmap(dtw_distmat_death, Colv = NA, Rowv = NA, symm =T, margins = c(3, 3), 
+        main = 'K-shape distance deaths', cexCol = 0.5, cexRow = 0.5)
+
+```
+
+## Geographical distances between states
+```{r echo=FALSE, fig.width=4, fig.height=3, fig.align = 'center'}
+heatmap(us_distance_matrix, Colv = NA, Rowv = NA, symm =T, margins = c(3, 3), 
+        main = 'Euclidean Geo distance', cexCol = 0.5, cexRow = 0.5)
+```
+
+## Correlation between geographical distances and case shape
+```{r Correlation test for distances cases, echo=FALSE}
+cor.test(df$case, df$geo_dis, method = "pearson")
+```
+
+## Correlation between geographical distances and death shape
+```{r Correlation test for distances, echo=FALSE}
+cor.test(df$death, df$geo_dis, method = "pearson")
+```
+
+## Correlation between geographical distances and case/death shape
+```{r Correlation plot, fig.width=4, fig.height=4, echo=FALSE, results='hide', message=FALSE}
+ggscatter(df, x = "case", y = "geo_dis", size = 0.8,
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "geo distance", ylab = "case K-shape distance")
+
+ggscatter(df, x = "death", y = "geo_dis", size = 0.8,
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "geo distance", ylab = "death K-shape distance")
+```
+
+## Cluster analysis
+- Applied a clustering algorithm with Dynamic Time Warping (DTW) Distance
+- Interpret the spatial distribution of the clusters
+- Interpret what case/death growth features/patterns does each cluster represents
+- To predict the cluster membership by demographical and political information for each state
+
+```{r US states geographical data scrapping and correlation, echo=FALSE, incude=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(choroplethr)
+library(acs)
+```
+
+## Clustering with Dynamic Time Warping (DTW) Distance
+- We used dtwclust R package
+- We first applied clustering validity index to determine the best K size
+- The best K = 6
+```{r CVI for clustering, echo=FALSE}
+print("Partition clustering for cases")
+pc_k_case <- tsclust(ts_avg_case_matrix, k = 5L:9L,
+                distance = "dtw_basic", centroid = "dba",norm = "L2",
+                preproc = zscore,norm = "L2",
+                window.size = 20L)
+
+names(pc_k_case) <- paste0("k_", 5L:9L)
+sapply(as.list(pc_k_case), cvi, type = "internal")
+
+print("Partition clustering for deaths")
+pc_k_death <- tsclust(ts_avg_death_matrix, k = 5L:9L,
+                distance = "dtw_basic", centroid = "dba",norm = "L2",
+                preproc = zscore,norm = "L2",
+                window.size = 20L)
+
+names(pc_k_death) <- paste0("k_", 5L:9L)
+sapply(as.list(pc_k_death), cvi, type = "internal")
+```
+```{r Clustering, include=FALSE}
+pc_case <- tsclust(ts_avg_case_matrix, type = "partitional", k = 6L, preproc = zscore,norm = "L2",
+              distance = "dtw_basic", centroid = "dba",
+              trace = TRUE, seed = 8,
+              norm = "L2", window.size = 20L,
+              args = tsclust_args(cent = list(trace = TRUE)))
+
+case_cluster <- pc_case@cluster
+case_cluster_list <- as.list(setNames(case_cluster, tolower(states_vect)))
+
+
+pc_death <- tsclust(ts_avg_death_matrix, type = "partitional", k = 6L, preproc = zscore,norm = "L2",
+              distance = "dtw_basic", centroid = "dba",
+              trace = TRUE, seed = 8,
+              norm = "L2", window.size = 20L,
+              args = tsclust_args(cent = list(trace = TRUE)))
+
+death_cluster <- pc_death@cluster
+death_cluster_list <- as.list(setNames(death_cluster, tolower(states_vect)))
+
+hc_case <- tsclust(ts_avg_case_matrix, type = "hierarchical", k =7, 
+              distance = "dtw_basic", trace = TRUE, preproc = zscore,norm = "L2",
+              control = hierarchical_control(method = "average"))
+
+hc_death <- tsclust(ts_avg_death_matrix, type = "hierarchical", k = 7, 
+              distance = "sbd", trace = TRUE, preproc = zscore,norm = "L2",
+              control = hierarchical_control(method = "average"))
+pc_case_plot <- plot(pc_case)
+pc_death_plot <- plot(pc_death)
+hc_case_plot <- plot(hc_case)
+hc_death_plot <- plot(hc_death)
+```
+
+## Partition Clustering
+```{r plot clutering, echo=FALSE}
+grid.arrange(pc_case_plot,pc_death_plot,nrow=2)
+```
+
+## Hierarchical Clustering
+```{r h clustering plot, fig.width=9, fig.height=5, echo=FALSE, message=FALSE, results='hide'}
+par(mfrow=c(1,2)) 
+plot(hc_case, cex=0.5)
+xlab('')
+plot(hc_death, cex=0.5)
+```
+
+## What does each cluster means?
+```{r , include=FALSE}
+centroids_plots_case <- vector('list', 6)
+for (i in 1:6) {
+  temp <- pc_case@centroids[[i]]
+  temp_df <- data.frame(t=1:length(temp), cases=temp)
+  centroids_plots_case[[i]] <- ggplot(temp_df, aes(x=t, y=cases)) +  
+  geom_line(linetype = "solid", color = brewer.pal(n = 7, name = "Set2")[i+1], size=1) +
+    ggtitle(paste("Case Cluster", i))
+}
+
+centroids_plots_death <- vector('list', 6)
+for (i in 1:6) {
+  temp <- pc_death@centroids[[i]]
+  temp_df <- data.frame(t=1:length(temp), death=temp)
+  centroids_plots_death[[i]] <- ggplot(temp_df, aes(x=t, y=death)) +  
+  geom_line(linetype = "solid", color = brewer.pal(n = 7, name = "Set2")[i+1], size=1)+
+    ggtitle(paste("Death Cluster", i))
+}
+```
+```{r Cluster centroid plotting, echo=FALSE, results='hide', message=FALSE}
+grid.arrange(grobs = c(centroids_plots_case, centroids_plots_death), ncol = 3)
+```
+
+## Cluster on a US map
+```{r State data, include=FALSE}
+state <- map_data("state")
+setdiff(unique(state$region), names(death_cluster_list))
+
+death_cluster_list['district of columbia'] = 0
+case_cluster_list['district of columbia'] = 0
+
+state$case_cluster <- unlist(case_cluster_list[state$region], use.names=FALSE)
+state$death_cluster <- unlist(death_cluster_list[state$region], use.names=FALSE)
+
+state$case_cluster <- as.character(state$case_cluster)
+state$death_cluster <- as.character(state$death_cluster)
+```
+
+```{r plot cluster map,echo=FALSE,fig.width=9, fig.height=4}
+us_cluster_case <- ggplot(data=state, aes(x=long, y=lat, fill=case_cluster, group=group)) + 
+  geom_polygon(color = "white") + 
+  guides(fill=FALSE) + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank()) +
+  scale_fill_manual(values=brewer.pal(n = 7, name = "Set2")) + 
+  ggtitle('Clustering of new cases US states') + 
+  coord_fixed(1.3)
+
+us_cluster_death <- ggplot(data=state, aes(x=long, y=lat, fill=death_cluster, group=group)) + 
+  geom_polygon(color = "white") + 
+  guides(fill=FALSE) + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank()) + 
+  scale_fill_manual(values=brewer.pal(n = 7, name = "Set2")) + 
+  ggtitle('Clustering of new deaths US states') + 
+  coord_fixed(1.3)
+
+grid.arrange(us_cluster_case, us_cluster_death, ncol = 2)
+```
+
+## To predict cluster membership
+- We fitted a multinomial logistic regression model
+  - total population, percent white, median age, per capita income, political party affiliation, and the population density
+
+$$ f(k, i) = \beta_{0, k} + \beta_{1, k} X_{population, i} $$
+$$ + \beta_{2, k} X_{white percentage, i} $$
+$$ + \beta_{3, k} X_{income, i} + \beta_{4, k} X_{age, i} $$
+$$ + \beta_{5, k} X_{party affiliation, i} + \beta_{6, k} X_{population density, i} $$
+- We applied a Chi-square test for the performance of the model
+- We applied a repeated Likelihood Ratio Test
+
+```{r construct data for multinomial testing, include=FALSE}
+us_data_2020 <- read.csv(file = 'us_data_2020.csv')
+prediction_clusters_case <- unlist(case_cluster_list[us_data_2020$region], use.names=FALSE)
+prediction_clusters_death <- unlist(death_cluster_list[us_data_2020$region], use.names=FALSE)
+
+vote <- c(0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0,0,0,0,0, 1, 1,1,1,1, 0,0,0,0, 1,1,1,1,1, 0,0,0,0, 1,1,1, 0,0,0,0,0, 1,1,1,0,1,0)
+
+us_data_2020$cluster_case <- prediction_clusters_case
+us_data_2020$cluster_death <- prediction_clusters_death
+states_vect <- state.name;
+us_data_2020_subset <- subset(us_data_2020, region %in% tolower(states_vect))
+us_data_2020_subset$vote <- vote
+
+us_data_2020_subset$cluster_case <- as.factor(us_data_2020_subset$cluster_case)
+us_data_2020_subset$cluster_death <- as.factor(us_data_2020_subset$cluster_death)
+us_data_2020_subset$vote <- as.factor(us_data_2020_subset$vote)
+
+us_data_2020_subset$total_population_scale <- scale(us_data_2020_subset$total_population)
+us_data_2020_subset$percent_white_scale <- scale(us_data_2020_subset$percent_white)
+us_data_2020_subset$per_capita_income_scale <- scale(us_data_2020_subset$per_capita_income)
+us_data_2020_subset$median_rent_scale <- scale(us_data_2020_subset$median_rent)
+us_data_2020_subset$median_age_scale <- scale(us_data_2020_subset$median_age)
+us_data_2020_subset$density <- scale(state.density)
+```
+
+```{r multinomial model fitting, include=FALSE}
+multi_mo_case <- multinom(cluster_case ~ total_population_scale + percent_white_scale +
+                       per_capita_income_scale + vote + density + 
+                       median_age_scale, data = us_data_2020_subset, model=TRUE)
+multi_mo_death<- multinom(cluster_death ~ total_population_scale + percent_white_scale +
+                       per_capita_income_scale + vote + density + 
+                       median_age_scale, data = us_data_2020_subset, model=TRUE)
+```
+
+## Model fitting Chi square
+```{r chi square testing, echo=FALSE, message=FALSE, warning=FALSE}
+print('Chi square testing for the full model, case')
+chisq.test(us_data_2020_subset$cluster_case,predict(multi_mo_case))
+print('Chi square testing for the full model, death')
+chisq.test(us_data_2020_subset$cluster_death,predict(multi_mo_death))
+```
+
+
+## The results for each predictors (Likelihood Ratio Test)
+- for cases
+  - percentage of white polulation (p < 0.001)
+  - the political party affliation (p < 0.05) 
+- for deaths
+  - the polulation density (p < 0.001)
+  - the percentage of white polulation (p = 0.051)
+
+
+## Conclusion for Spatial Trend Analysis
+ - Cases/deaths growth patterns are correlated with their geographical location.
+   - Adjacently spreading/difussion
+ - 6 clusters for cases/deaths
+   - Timing of waves
+   - Relative amount of different waves
+ - The clusters are also geographically clustered
+   - the adjancent spreading of the virus
+   - the natural environment of different states (e.g. temperature, weather, etc.) 
+   - the way people live/test (e.g., urban vs. rural)
+
+## Conclusion for Spatial Trend Analysis
+ - percentage of white polulation and political party affliation predicts cases
+   - race inequality in time of pandemic
+   - political influence on spread of virus
+ - population density is the major predictor for death
+   - hospitalization resources are crucial for saving patients' lives
+   - cope with COVID-19 by population density
+
+# Thank you
