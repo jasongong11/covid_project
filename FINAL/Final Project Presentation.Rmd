@@ -302,13 +302,14 @@ $$\theta_q \epsilon_{t-q}$$
 
 
 ## ARIMA Model Development Process
-- 1. Decomposition of data to examine trends and oscillatory patterns
-- 2. ADF test to check for non-stationarity
-- 3. Difference scheme to stationarize data
-- 4. Visualization of ACF and PCF to observe lags
-- 5. Calculations of Optimal Parameters for seasonal and non-seasonal trends
+- Decomposition of data to examine trends and oscillatory patterns
+- ADF test to check for non-stationarity
+- Difference scheme to stationarize data
+- Visualization of ACF and PCF to determine lags
+- Calculations of Optimal Parameters for seasonal and non-seasonal trends
 
-```{r,echo = FALSE,fig.align = 'center'}
+## Decomposed Raw Covid Case Data
+```{r,echo = FALSE,fig.align = 'center',fig.height = 3}
 # Timeseries Analysis of Cases
 
 # Converting to timeseries
@@ -325,7 +326,8 @@ plot(components.ts,xlab = "Weeks since March 1st, 2020")
 tseries::adf.test(new_cases.ts)
 ```
 
-```{r,echo = FALSE,fig.align = 'center'}
+## Decomposed Difference Case Data
+```{r,echo = FALSE,fig.align = 'center',fig.height = 3}
 ## Remove Non Stationrity through differencing
 diff_new_cases.ts <- diff(new_cases.ts)
 
@@ -338,14 +340,18 @@ plot(components.ts2,xlab = "Weeks since March 1st, 2020")
 tseries::adf.test(diff(new_cases.ts))
 ```
 
+## ACF and PCF
 ```{r,echo=FALSE, results="hide"}
+## examine autocorrelation function
+new_cases.ts %>% diff() %>% ggtsdisplay(main="")
+
 ## Calculate optimal coefficient for model
 auto.arima(new_cases.ts, trace=TRUE) 
 
 ## Determining AR model
 fitARIMA_cases <- arima(new_cases.ts, order=c(0,1,1),seasonal = list(order = c(0,0,2), period = 7),method="ML")
 ```
-
+### Checking Residuals
 ```{r,echo=FALSE, results="hide"}
 
 ## Check residuals
@@ -353,8 +359,35 @@ checkresiduals(fitARIMA_cases)
 
 ```
 
+```{r,include=FALSE}
+## For Deaths
+## Decompose
+components.ts = decompose(new_deaths.ts)
+plot(components.ts,xlab = "Weeks since March 1st, 2020")
+
+# Test for Stationarity
+tseries::adf.test(new_deaths.ts)
+## Remove Non Stationrity through differencing
+diff_new_deaths.ts <- diff(new_deaths.ts)
+
+components.ts2 = decompose(diff_new_deaths.ts)
+plot(components.ts2,xlab = "Weeks since March 1st, 2020")
+
+# using differencing method
+tseries::adf.test(diff(new_deaths.ts))
+
+## examine autocorrelation function
+new_deaths.ts %>% diff() %>% ggtsdisplay(main="")
+
+## Calculate optimal coefficient for model
+auto.arima(new_deaths.ts, trace=TRUE) 
+
+## Determining AR model
+fitARIMA_deaths <- arima(new_deaths.ts, order=c(1,0,2),seasonal = list(order = c(0,1,1), period = 7),method="ML")
+```
+
 ## Forecast Model Results
-```{r,echo=FALSE,fig.width=7,fig.height=3,fig.align='center'}
+```{r,echo=FALSE,fig.width=7,fig.height=2.5,fig.align='center'}
 fmodel_cases <- forecast(fitARIMA_cases)
 
 ## plot forecast
@@ -363,7 +396,7 @@ autoplot(forecast(fitARIMA_cases))+
   ggtitle("AR Lag 7 Model for Covid Cases")
 ```
 
-```{r,echo=FALSE,fig.width=7,fig.height=3,fig.align='center'}
+```{r,echo=FALSE,fig.width=7,fig.height=2.5,fig.align='center'}
 ## plot forecast
 
 fmodel_death <- forecast(fitARIMA_deaths)

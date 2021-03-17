@@ -457,6 +457,9 @@ The next step in the model development process is to find the optimal parameters
 \end{center}
 
 ```{r,echo=FALSE, results="hide"}
+## examine autocorrelation function
+new_cases.ts %>% diff() %>% ggtsdisplay(main="")
+
 ## Calculate optimal coefficient for model
 auto.arima(new_cases.ts, trace=TRUE) 
 
