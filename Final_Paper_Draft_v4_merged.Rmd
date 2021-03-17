@@ -595,7 +595,7 @@ Figure  - 30 Day forecast for Covid-19 deaths in US using AR Lag-7 Model. Dark b
 \begin{center}
 \newpage
 \end{center}
-## Spatial analysis
+## Spatial Trends Analysis
 ```{r make case and dealth matrix, include=FALSE}
 state_data2 <- state_data2 %>%
   mutate(avg_new_cases = stats::filter(new_cases, filter=rep(1/7,7), side=1),
@@ -626,7 +626,7 @@ ts_avg_death_matrix <- ts_avg_death_matrix[ , colSums(is.na(ts_avg_death_matrix)
 
 ```
 
-We first smoothed the time-series data for better esitimate the K-shape distance and clustering analysis. Below we plotted the new cases/deaths time series (log transformed) data for each states. \
+We first smoothed the time-series data for better esitimating the K-shape distance and applying the clustering analysis. Below we plotted the new cases/deaths time series (log transformed) data for each states. \
 
 ```{r plot time series data, echo=FALSE, results="hide", message=FALSE, warning = FALSE, fig.width=8, fig.height=4}
 cl <- rainbow(50)
@@ -868,7 +868,7 @@ grid.arrange(us_cluster_case, us_cluster_death, ncol = 2)
 Figure 37 - The US state maps color filled by the cluster memebership for case and death growth
 \end{center}
 
-Thus, we predicted that the pattern of cases and deaths growth of each state should be predicted by the demographical and political information for each state. We fitted a multinomical statistical testing to predict the cluster membership. The predictors include total population, percent white, median age, per capita income, political party affiliation, and the population density. For the summary of the two full models. 
+We consider that the pattern of cases and deaths growth of each state should be predicted by the demographical and political information for each state. Thus, we fitted a multinomical logistic regression model to predict the cluster membership. The predictors include total population, percent white, median age, per capita income, political party affiliation, and the population density. For the summary of the two full models, see the appendix. 
 
 ```{r construct data for multinomial testing, include=FALSE}
 
@@ -906,44 +906,20 @@ multi_mo_death<- multinom(cluster_death ~ total_population_scale + percent_white
                        median_age_scale, data = us_data_2020_subset, model=TRUE)
 ```
 
-```{r display summary results, echo=FALSE}
-print('The summary for multinomial regression model for case')
-summary(multi_mo_case)
+With the coefficients and the standard error extracted from the fitted model, we calcualted the p values for each of the predictors. See the p value results in appendix.
 
-print('The summary for multinomial regression model for death')
-summary(multi_mo_death)
-```
-
-With the coefficients and the standard error extracted from the fitted model, we calcualted the p values for each of the predictors. See the results below.
-
-```{r, p values for MRM, echo=FALSE}
-z_case <- summary(multi_mo_case)$coefficients/summary(multi_mo_case)$standard.errors
-
-print('The p values for each predictors for case')
-p_case <- (1 - pnorm(abs(z_case), 0, 1)) * 2
-p_case
-
-z_death <- summary(multi_mo_death)$coefficients/summary(multi_mo_death)$standard.errors
-
-print('The p values for each predictors for death')
-p_death <- (1 - pnorm(abs(z_death), 0, 1)) * 2
-p_death
-```
-
-Moreover, we applied a chi square testing for the full model for both cases and deaths. The results suggest that our model can significantly predict the cluster membership for cases growth (p < 0.001) and deaths growth (p < 0.001) based on the demographical and political information of each state. For the results of chi square testing, see below:
+Moreover, we applied a Chi square testing to determine if our model can correctly predict cases and deaths. The results suggest that our model can significantly predict the cluster membership for both cases growth (p < 0.001) and deaths growth (p < 0.001) based on the demographical and political information of each state. The results of chi square testing are shown below:
 
 ```{r chi square testing, echo=FALSE, message=FALSE, warning=FALSE}
 print('Chi square testing for the full model, case')
 chisq.test(us_data_2020_subset$cluster_case,predict(multi_mo_case))
 print('Chi square testing for the full model, death')
 chisq.test(us_data_2020_subset$cluster_death,predict(multi_mo_death))
-
-
 # polutation density build-in R data
 
 ```
 
-Finally, we are interested in whether or not each individual predictor is a significant predictor for the cases or deaths growth for each state. Then we compared the Likelihood Ratio testing between the reduced model and the full model with one predictor dropped each time. Based on the results, we found that the percentage of white polulation (p < 0.001) and the political party affliation (p < 0.05) are the two significant preditors for predicting case. The total population (p = 0.139), median age (p = 0.663), and per capita income (p = 0.252) are not significant predictor for predicting the case growth pattern. We also found that, for death growth pattern, only the polulation density is the significant predictor. The total population (p = 0.707), median age (p = 0.993), per capita income (p = 0.721), and political party affliation (p = 0.469) are not significant predictor for predicting the death growth pattern. However, the percentage of white polulation (p = 0.051) is the weak predictor for predicting the death growth pattern. See the full results below:
+Finally, we are interested in whether or not each predictor can significantly predict the pattern of cases or deaths growth. Then we applied a repeated Likelihood Ratio testing between the reduced model and the full model with one predictor dropped each time. Based on the results, we found that the percentage of white polulation (p < 0.001) and the political party affliation (p < 0.05) are the two significant preditors for predicting case. The total population (p = 0.139), median age (p = 0.663), and per capita income (p = 0.252) are not significant predictor for predicting the case growth pattern. We also found that, for death growth pattern, only the polulation density (p < 0.001) is the significant predictor. The total population (p = 0.707), median age (p = 0.993), per capita income (p = 0.721), and political party affliation (p = 0.469) are not significant predictor for the death growth pattern. However, the percentage of white polulation (p = 0.051) is a weak predictor for predicting the death growth pattern. See the full results in appendix:
 
 ```{r significant testing for each predictor, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
 result1 <- lrtest(multi_mo_case, "total_population_scale")
@@ -965,9 +941,71 @@ ctable <- table(us_data_2020_subset$cluster_case,predict(multi_mo_case))
 
 ctable <- table(us_data_2020_subset$cluster_case,predict(multi_mo_case))
 # ctable
-
-
 ```
+
+\begin{center}
+\newpage
+\end{center}
+# Conclusions
+
+## Temporal Trends
+
+Any interesting extension of this analysis would be to develope a multivariate ARIMA forecast model using both case and death parameters as predictors.
+
+## Spatial Trends
+Based on our analysis, we found out that:
+
+1. The new cases growth pattern and the new deaths growth patterns among states are correlated with their geographical location. This indicates that geographically adjacent states will have similar cases and deaths growth pattern. This might suggest that the spreading of the virus is constraint by the geographical distance and might be diffused adjacently. 
+
+2. We found that the cases and deaths time series could be clustered into six clusters. Each cluster indicates an unique growth pattern for case or death. The distinction between different clusters could be 1) the timing of waves of spreading, and 2) the relative number of cases/deaths among the three waves (some states have low first wave cases, but have high second and third wave cases, but other states have high first wave cases, but have relatively low second and third wave cases). 
+
+3. We also found that the clustering of states are also geographically clustered. This could be due to 1) the adjancent spreading of the virus; 2) the natural environment of different states (e.g. temperature, weather, etc.); 3) the way people live (e.g., urban vs. rural). 
+
+4. We built a multinomial logistic regression model to predict the cluster membership for both case and death, with predictors as total population, percent white, median age, per capita income, political party affiliation, and the population density. We found that: 1) the demographical information of races can predict both death and cases, which might indicate the existence of racial inequality at times of a pandemic. 2) The political party affiation is the significant predictor for cases, which might indicate that different party affiliation influences people's attitude and coping strategy toward COVID-19. 3) The population density is the major predictor for death, which might indicate that the growth of death is mainly determined by the avaliability of hospitalization resources. When in a population dense area, the rapid spreading of the virus will run out of the hospital resources and eventually have causal effect on patients' death. 
+
+\begin{center}
+\newpage
+\end{center}
+# References
+Bergman, A., Sella, Y., Agre, P., & Casadevall, A. (2020). Oscillations in U.S. COVID-19 Incidence and Mortality Data Reflect Diagnostic and Reporting Factors. MSystems, 5(4), e00544-20. https://doi.org/10.1128/mSystems.00544-20
+Paparrizos, J., & Gravano, L. (2015, May). k-shape: Efficient and accurate clustering of time series. In Proceedings of the 2015 ACM SIGMOD International Conference on Management of Data (pp. 1855-1870).
+Petitjean, F., Ketterlin, A., & Gançarski, P. (2011). A global averaging method for dynamic time warping, with applications to clustering. Pattern recognition, 44(3), 678-693.
+Sardá-Espinosa, A. (2017). Comparing time-series clustering algorithms in r using the dtwclust package. R package vignette, 12, 41.
+\begin{center}
+\newpage
+\end{center}
+# Appendix
+## Summary for the multimonimal logistic regression models for predicting cases and deaths
+
+```{r display summary results, echo=FALSE}
+print('The summary for multinomial regression model for case')
+summary(multi_mo_case)
+
+print('The summary for multinomial regression model for death')
+summary(multi_mo_death)
+```
+\begin{center}
+\newpage
+\end{center}
+## The p values for each of the predictors in the multinomical models
+
+```{r, p values for MRM, echo=FALSE}
+z_case <- summary(multi_mo_case)$coefficients/summary(multi_mo_case)$standard.errors
+
+print('The p values for each predictors for case')
+p_case <- (1 - pnorm(abs(z_case), 0, 1)) * 2
+p_case
+
+z_death <- summary(multi_mo_death)$coefficients/summary(multi_mo_death)$standard.errors
+
+print('The p values for each predictors for death')
+p_death <- (1 - pnorm(abs(z_death), 0, 1)) * 2
+p_death
+```
+\begin{center}
+\newpage
+\end{center}
+## The Likelihood Ratio testing for each of the predictors for the multinomical models
 
 ```{r displaying the results, echo=FALSE}
 print('Case total_population_scale')
@@ -996,32 +1034,3 @@ result05
 print('Death density')
 result06
 ```
-
-
-\begin{center}
-\newpage
-\end{center}
-# Conclusions
-
-## Temporal Trends
-
-Any interesting extension of this analysis would be to develope a multivariate ARIMA forecast model using both case and death parameters as predictors.
-
-## Spatial Trends
-Based on our analysis, we found out that:
-1. The new cases growth pattern and the new deaths growth patterns among states are correlated with their geographical location. This indicates that geographically adjacent states will have similar cases and deaths growth pattern. This might suggest that the spreading of the virus is constraint by the geographical distance and might be diffused adjacently. 
-
-2. We found that the cases and deaths time series could be clustered into six clusters. Each cluster indicates an unique growth pattern for case or death. The distinction between different clusters could be 1) the timing of waves of spreading, and 2) the relative number of cases/deaths among the three waves (some states have low first wave cases, but have high second and third wave cases, but other states have high first wave cases, but have relatively low second and third wave cases). 
-
-3. We also found that the clustering of states are also geographically clustered. This could be due to 1) the adjancent spreading of the virus; 2) the natural environment of different states (e.g. temperature, weather, etc.); 3) the way people live (e.g., urban vs. rural). 
-
-4. We built a multinomial logistic regression model to predict the cluster membership for both case and death, with predictors as total population, percent white, median age, per capita income, political party affiliation, and the population density. We found that: 1) the demographical information of races can predict both death and cases, which might indicate the existence of racial inequality at times of a pandemic. 2) The political party affiation is the significant predictor for cases, which might indicate that different party affiliation influences people's attitude and coping strategy toward COVID-19. 3) The population density is the major predictor for death, which might indicate that the growth of death is mainly determined by the avaliability of hospitalization resources. When in a population dense area, the rapid spreading of the virus will run out of the hospital resources and eventually have causal effect on patients' death. 
-
-\begin{center}
-\newpage
-\end{center}
-# References
-Bergman, A., Sella, Y., Agre, P., & Casadevall, A. (2020). Oscillations in U.S. COVID-19 Incidence and Mortality Data Reflect Diagnostic and Reporting Factors. MSystems, 5(4), e00544-20. https://doi.org/10.1128/mSystems.00544-20
-Paparrizos, J., & Gravano, L. (2015, May). k-shape: Efficient and accurate clustering of time series. In Proceedings of the 2015 ACM SIGMOD International Conference on Management of Data (pp. 1855-1870).
-Petitjean, F., Ketterlin, A., & Gançarski, P. (2011). A global averaging method for dynamic time warping, with applications to clustering. Pattern recognition, 44(3), 678-693.
-Sardá-Espinosa, A. (2017). Comparing time-series clustering algorithms in r using the dtwclust package. R package vignette, 12, 41.
