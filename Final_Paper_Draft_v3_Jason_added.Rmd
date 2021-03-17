@@ -1,0 +1,970 @@
+---
+title: "Statistical Analysis of Temporal and Spatial Trends in US Covid-19 Cases and Deaths"
+author: "Jason Gong and Micah Swann"
+affiliation: "UC Davis"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,warning=FALSE,message=FALSE, include = FALSE}
+## REQUIRED PACKAGES
+# install.packages("gridExtra")
+# packages = c("gtrendsR","tidyverse","usmap")
+# install.packages("mapproj")
+# importing libraries
+
+## REQUIRED LIBRARIES
+ library(dplyr)
+ library(tidyverse)
+ library(data.table)
+ library(ggplot2)  
+ library(scales)
+ library(gridExtra)
+ library(lmtest)
+ library(forecast)
+ library(dtwclust)
+ library(ggpubr)
+ library(gplots)
+ library(RColorBrewer)
+ library(nnet)
+ library(summarytools)
+ library(lmtest)
+```
+
+# Introduction
+
+Covid-19 is a novel, highly contagious, acute respiratory virus that was first identified in December 2019 in Wuhan, China. Over the course of the following 14 months, this virus spread rapidly to every corner of the globe, becoming one of the deadliest pandemics in recorded history. In the United States, the first confirmed Covid-19 case was identified in January 2020 and by mid-March there were confirmed cases in every single state and North American territory. In the midst of this rapid pandemic spread, epidemiologists and modelers struggled to accurately forecast the spatial and temporal trends in cases and deaths. However, with regularly updated, publicly-available covid tracking data, a sufficient amount of data now exists to retroactively examine how cases and deaths evolved over the course of this 14 month period. This study utilizes the New York Times Covid Tracking Data to statistically analyze trends in the timeseries of Covid-19 cases and deaths as well as the spatial development of cases at the state level across the united states using cluster analysis. 
+
+# Data Description
+
+## Data Sources
+
+Due to the fragmented nature of the US public health system, there is no centralized governmental data repository that is updated daily with Covid-19 case and death data. Instead, this study obtained data from the New York Times (NYTimes) Covid-19 Tracking Project (https://github.com/nytimes/covid-19-data). The NYTimes relies on dozens of reporters across multiple time zones to regularly update this tracking database with new information from press conferences, report releases, and local databases. Datasets utilized in this analysis reported the daily cumulative case and death counts in the US aggregated at the national, state and county level (US.csv, US-states.csv, US-counties.csv), respectively.  Demographic data on state populations were also obtained from the US census bureau to compare per capita rates.
+
+## Data Formatting
+
+All data analysis and visualization for this study was conducted in RStudio. The dataset was filtered to only examine cases and deaths reported from the beginning of March 2020 through the middle of February 2021. Raw data was reported as cumulative cases and deaths through time. To examine daily statistics, a filtering function was applied to calculate the finite difference between each consecutive reporting day.
+
+# Exploratory Data Analysis
+
+## Timeseries Visualization
+
+An initial exploratory data analysis (EDA) was conducted to both elucidate trends and characteristics of the dataset and to guide the model development process. To better understand the temporal evolution of daily new cases and deaths in the US, a timeseries for both of these parameters was first generated (Figure 1).  The timeseries of daily US Covid-19 cases depicts four distinct regimes in the change in daily covid 19 cases throughout the course of the pandemic. From March through the end of May 2020, the number of cases grew logistically; growing exponentially in March before asymptoting at a maximum daily new case load of 25,000-30,000 individuals through April and May. Similar but larger magnitude growth trends are evident in June through August, asymptoting around 65,000 daily new cases, and October through December 2020, asymptoting around 250,000 daily new cases. Note that the sharp drop in cases around the end of December is likely a reflection of a decline in reporting around the winter holidays and not a reflection of the actual drop in the real case load. From January 2021 onwards, the case trend differs from the early regimes, with a noticeable linear decline in the reported case numbers through December. Another interesting aspect of this dataset is the seven-day oscillation in the case numbers. New case numbers always tend to be lower on Saturdays and Sundays than during weekdays, reflecting the fact that many labs do not report case numbers on the weekend. The timeseries of daily Covid-19 deaths shows a similar logistic growth rate to the case rate in the early spring 2020. However, the number of deaths, drops significantly from mid-May 2020 and oscillates around 1000 cases a days until November 2020 when the number of daily new deaths rises again, fluctuating around 3000 deaths per days. The seven oscillations, observed in the timeseries of new cases, is even more prominent in the death data, with significant drops in reported deaths during the weekend. This initial visualization and review makes evident that that there are clear similarities and differences in the functional trends between both datasets.\  
+\  
+
+```{r, echo = FALSE}
+# read in NYtimes Covid data tables 
+
+# Cumulative Daily Cases and Deaths by 
+# 1 - County Level
+cty_data <-read.csv("us-counties.csv") 
+
+# 2 - State Level
+state_data <-read.csv("us-states.csv")
+state_pop <-read.csv("state_pop.csv")
+
+# 3 - 
+us_data <-read.csv("us.csv")
+
+# transforming date column from CHARACTER to DATE class
+cty_data$date <- as.Date(cty_data$date)
+state_data$date <- as.Date(state_data$date,format="%Y-%m-%d")
+us_data$date <- as.Date(us_data$date)
+
+# filter out dates before March 1st, 2020
+cty_data <- base::subset(cty_data,date>"2020-02-29")
+state_data <- base::subset(state_data,date>"2020-02-29")
+us_data <- base::subset(us_data,date>"2020-02-29")
+
+# Examination of US-wide Temporal Trends
+
+# Use `filter()` to add a column named `new_cases` and 'new_deaths'
+us_data$new_cases = as.numeric(stats::filter(us_data$cases,filter=c(1,-1), sides=1))
+
+us_data$new_deaths = as.numeric(stats::filter(us_data$deaths,filter=c(1,-1), sides=1))
+ 
+# Change first entry fo new deaths and new cases from NA to 0
+us_data$new_cases[1]<-0
+us_data$new_deaths[1]<-0
+
+# Add Data on Season
+season <- c("Spring","Summer","Winter","Fall")
+
+# create df for seasons
+season_df = data.frame(c(1:12),c("Winter","Winter","Spring","Spring","Spring","Summer","Summer","Summer","Fall","Fall","Fall","Winter"))
+names(season_df)[1] <- "month"
+names(season_df)[2] <- "season"
+
+for (i in 1:length(us_data$date))
+{
+  if (month(us_data$date[i]) >= 3 & month(us_data$date[i]) < 6) {
+    us_data$season[i] = season[1]
+  } else if (month(us_data$date[i]) >= 6 & month(us_data$date[i]) < 9) {
+    us_data$season[i] = season[2]
+  } else if (month(us_data$date[i]) >= 9 & month(us_data$date[i]) < 12) {
+    us_data$season[i] = season[3]
+  } else {
+    us_data$season[i] = season[4]
+  }
+}
+us_data$season = as.factor(us_data$season)
+
+## Plotting Below
+
+# Timeseries of Covid Cases and Deaths through time
+# Value used to transform the data
+p1 <- ggplot(us_data, aes(x = date, y = new_cases)) +
+            geom_line(color = "darkred") +
+  labs(title="US Covid-19 Cases and Deaths",  y="Daily New Cases", x="")+
+  theme(plot.title = element_text(hjust = 0.5))
+  
+
+p2 <- ggplot(us_data, aes(x = date, y = new_deaths)) +
+            geom_line(color = "black") +
+  labs(  y="Daily New Deaths", x="Date")
+   
+grid.arrange(p1,p2,nrow=2)
+```
+\begin{center}
+Figure 1 - Timeseries of daily new Covid-19 cases (top) and deaths (bottom) in the United States, March 2020 - February 2021.
+\end{center}
+
+## Case-Death Scatter Plot
+
+To further examine how the relationship between daily new US covid cases and deaths changed through time, a scatter plot of these two variables was generated (Figure 2). Having previously identified four distinct regimes in the case growth rate, these points were colored by the season for each observation. The scatter plot further highlights the different trends in the daily case to death ratios during each of these time periods. In the spring 2020, there is an significantly evident positive correlation in the case to death ratio. The points in this season are all closely clustered with the deaths growing exponentially with cases. In the summer 2020 data, there is no clear positive or negative trend in the correlation between the two parameters with the points scatter roughly in a circle. In the fall season, again a positive correlation is evident, however the case to death ratio is four to five times that observed in the spring. Finally in the winter (December 2020 – February 2021), the ratio of cases to deaths decreases but is still positive.   
+  
+```{r,echo=FALSE}
+# scatter plot comparison of Cases Vs Deaths
+gg <- ggplot(us_data,aes(x = new_cases, y = new_deaths, colour = season)) +
+  geom_point() +
+   labs(title="Cases Vs Deaths (US-wide)",y="Daily Deaths", x="Daily Cases")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot(gg)
+```
+\begin{center}
+Figure 2 - Scatterplot of daily new Covid-19 cases vs deaths in United States. Point colors indicate season
+\end{center}
+
+## State Case Rate Box Plots
+Description of box plots blah blah blah blah blah
+```{r, echo = FALSE, fig.align="center"}
+## Examining State Spatial Trends
+
+# 1 - Formatting Data
+
+# remove leading character in State_Pop$State
+state_pop$State <- substring(state_pop$State,2)
+
+# remove commas from population and convert to numeric
+state_pop$Population <- as.numeric(gsub(",","",state_pop$Population))
+
+
+# add state population data
+state_data <- merge(state_data, state_pop, by.x="state", by.y="State")
+
+
+# get population density
+# remove DC from state_pop list
+state_pop <-state_pop [-c(9), ] 
+state.density = state_pop$Population/state.area
+
+## get state regional data
+states_info <- data.frame(state.name,state.region,state.density)
+names(states_info)[1] <- "Name"
+names(states_info)[2] <- "Region"
+names(states_info)[3] <- "Density"
+
+# add state region data
+state_data <- merge(state_data, states_info, by.x="state", by.y="Name")
+
+# categorize into density groups
+
+for (i in 1:length(state_data$Density))
+{
+  if (state_data$Density[i] <= 50) {
+     state_data$Density2[i] <- "<=50"
+  } else if (state_data$Density[i] >  50 & state_data$Density[i] <= 100) {
+    state_data$Density2[i] <- "50-100"
+  } else if (state_data$Density[i] >  100 & state_data$Density[i] <= 400) {
+    state_data$Density2[i] <- "100-400"
+  } else {
+    state_data$Density2[i] <- ">400"
+  }
+}
+state_data$Density2 <- factor(state_data$Density2,
+    levels = c('<=50','50-100','100-400','>400'),ordered = TRUE)
+
+# sort by date
+state_data<-state_data[order((state_data$date)),]
+
+# Find unique fips values to find unique counties
+fips_vect <- unique(cty_data$fips)
+
+# Find unique dates
+dates_vect <- unique(cty_data$date)
+
+# find unique states (Exclude territories)
+states_vect <-state.name;
+
+# Find number of daily new cases and deaths by state
+i <-1
+
+# looping through unique state names
+for (val in states_vect)
+{
+  # subset by state
+  dum <- subset(state_data, state == val)
+  
+  #Use `filter()` to add a column named `new_cases` 
+  dum$new_cases = as.numeric(stats::filter(dum$cases,filter=c(1,-1), sides=1))
+
+  # Set Na values to 0. These occur on the first date of obervations
+  dum$new_cases[is.na(dum$new_cases)] <- 0
+  
+  #Use `filter()` to add a column named `new_deaths` 
+  dum$new_deaths = as.numeric(stats::filter(dum$deaths,filter=c(1,-1), sides=1))
+  
+    # Set NaN values to 0. These occur on the first date of obervations
+  dum$new_deaths[is.na(dum$new_deaths)] <- 0
+  
+  # append to dataframe
+  if (i>1){
+    df1 <- rbind(df1,dum)
+  }else{
+    df1 <- dum
+  }
+  i <- i+1
+  rm(dum)
+}
+# final new data frame
+state_data2 <- df1
+
+#calculate per capita case and death rates
+state_data2$pc_new_cases <- state_data2$new_cases / state_data2$Population
+state_data2$pc_new_deaths <- state_data2$new_deaths / state_data2$Population
+
+# extracting year and month
+month <- data.frame(format(state_data2$date,format="%m/%y"))
+# month <- data.frame(format(state_data2$date,format="%m"))
+
+# add as columns to df
+# state_data2<-bind_cols(state_data2,year)
+state_data2<-bind_cols(state_data2,month)
+
+# sorting columns
+state_data3 <- state_data2[,c(1,14,2:13)]
+
+# renaming columns
+names(state_data3)[2] <- "month"
+
+# Calculate pc avg cases for each state
+state_mnthly_cases = as.data.table(state_data3)[, mean(pc_new_cases), by = .(month,state, Region,Density2)]
+names(state_mnthly_cases)[5] <- "avg_pc_cases"
+state_mnthly_cases$Density2 = as.factor(state_mnthly_cases$Density2)
+names(state_mnthly_cases)[4] <- "Density"
+
+# Calculate avg deaths for each state
+state_mnthly_deaths = as.data.table(state_data3)[, mean(pc_new_deaths), by = .(month,state,Region,Density2)]
+names(state_mnthly_deaths)[5] <- "avg_pc_deaths"
+state_mnthly_deaths$Density2 = as.factor(state_mnthly_deaths$Density2)
+names(state_mnthly_deaths)[4] <- "Density"
+
+# Boxplot of Monthly Cumulative Cases by State
+
+# getting dates in order
+dum = unique(state_mnthly_cases$month)
+state_mnthly_cases$month <- factor(state_mnthly_cases$month , levels=dum)
+state_mnthly_deaths$month <- factor(state_mnthly_deaths$month , levels=dum)
+
+# plotting below
+```
+
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+# boxplot of cases
+mnthly_case_bplot = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot() +
+  theme(plot.title = element_text(hjust = 0.5))
+mnthly_case_bplot + labs(y = "Mean Per Capita Daily Cases by State",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by State") 
+```
+\begin{center}
+Figure 3 - Boxplot of daily average new Covid-19 cases by state across US. Data is binned by month
+\vspace{5mm} %5mm vertical space
+\end{center}
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+# boxplot of deaths
+mnthly_death_bplot = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + geom_boxplot() +
+  theme(plot.title = element_text(hjust = 0.5))
+mnthly_death_bplot + labs(y = "Mean Per Capita Daily Deaths by State",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by State")  
+
+```
+\begin{center}
+Figure 4 - Boxplot of daily average new Covid-19 deaths by state across US. Data is binned by month
+\end{center}
+
+## Regional Trends
+```{r, echo = FALSE}
+# Region Map
+all_states <- map_data("state")
+all_states$region <- str_to_title(all_states$region)  
+stateData <- merge(all_states,states_info,by.x="region",by.y = "Name" )
+
+regionplot <- ggplot()+geom_polygon(data=stateData,aes(x=long, y=lat, group = group, fill=Region),color="grey50")+coord_map()
+regionplot
+```
+\begin{center}
+Figure 5 - Map of US States grouped by region \pagebreak
+\end{center}
+
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+# Color by region
+mnthly_case_bplot2 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot(aes(color = Region)) 
+mnthly_case_bplot2 + labs(y = "Mean Per Capita Daily Cases by Region",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Region")  
+```
+
+\begin{center}
+Figure 6 - Boxplot of daily average new Covid-19 cases by state across US. Data is binned by month and categorized by region.
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+mnthly_death_bplot2 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
+geom_boxplot(aes(color = Region)) 
+mnthly_death_bplot2 + labs(y = "Mean Daily Per Capita Deaths by Region",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Region") 
+```
+
+\begin{center}
+Figure 7 - Boxplot of daily average new Covid-19 deaths by state across US. Data is binned by month and categorized by region. \\
+\end{center}
+
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+# Color by density
+mnthly_case_bplot3 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot(aes(color = Density)) 
+mnthly_case_bplot3 + labs(y = "Mean Per Capita Daily Cases by Density",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Density",fill = "Density [pop/mi^2]")  
+```
+
+\begin{center}
+Figure 8 - Density Case Boxplot
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+```{r, echo = FALSE,fig.width=7,fig.height=4}
+mnthly_death_bplot3 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
+geom_boxplot(aes(color = Density)) 
+mnthly_death_bplot3 + labs(y = "Mean Daily Per Capita Deaths by Density",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Density",fill = "Density [pop/mi^2]") 
+```
+
+\begin{center}
+Figure 9 - Density Death Boxplot
+\newpage
+\end{center}
+
+
+# Algorithms
+
+## ARIMA Forecast Model
+
+Utilizing the timeseries data of US Covid-19 cases and deaths an ARIMA (Autoregressive Integrated Moving Average) forecast model was developed to predict the change in these two parameters over the subsequent 30 days following the final day that data was reported in this dataset, February 15th, 2021. For this analysis, univariate time series forecasting was conducted; only previous values of a single parameter were used to forecast future parameter values. ARIMA is a family of linear regression models that seek to statistically ‘explain’ trends in time series data and forecast the future. This model combines the mathematical formulations of two less sophisticated models: a simple autoregressive model (AR) and a moving average (MA) model. In a purely autoregressive model, a modeled value at time t ($Y_t$) is soley a function of previous lags and modeled coefficients. 
+
+\begin{math}
+Y_t = \alpha + \beta_1 Y_{t-1} + \beta_2 Y_{t-2} 
+\end{math}
+
+Where  $\beta_1$ is the coefficient of lag 1 that the model estimates, $\alpha$ is in the intercept term and $\epsilon$ is the model error
+
+
+Model Development Process\
+
+## Cluster Analysis
+
+To better understand the spatial distribution of COVID new cases and new deaths increase across the 50 states in the US, our first question is to ask whether or not the state geographical distance influence the patterns how the cases and deaths increases (measured from times series data for cases and deaths). Thus, we applied a K-shape algorithm to calculate the pair-wise distance between any two state-level time series for both cases and deaths. The K-shape distance algorithm is an computationally efficient accurate method to estimate the distances between time-series data.^[Paparrizos, John, and Luis Gravano. "k-shape: Efficient and accurate clustering of time series." Proceedings of the 2015 ACM SIGMOD International Conference on Management of Data. 2015.] Then we applied a pearson correlation inference testing for the relationship between the geographical distances between states and the K-shape distances of time series between states.
+
+Then, we applied a partition clustering algorithm and a hierarchical clustering algorithm that is offered by *dtwclust*^[https://github.com/asardaes/dtwclust] R package to classify the time series data into K groups in an unsupervised way. Specifically, we used a *Dynamic Time Warping* (DTW) algorithm on the z-normalized time series data. The reason for applying the z-normalization preprocessing is because the time series differences between states has large variance simply due to its population (i.e. large population have large cases increase). However, in this study, we are interested in the relative growth pattern for cases and deaths instead of the absolute increase number of cases/deaths.  
+
+With the partition cluster classification for each states, we are interested in if we can predict its cluster membership by the state demographical and political statistics. We scrapped the recent state-level consensus data^[https://www.census.gov/data/developers/data-sets.html], and applied a multinomial regression model to predict the cluster membership (of cases and deaths respectively) of states by the total polutation, percetage of white citizens, per capital income, median age, political party affiliation based on 2020 election state-level results, and the population density. 
+
+\begin{align*}
+f(k, i) & = \beta_{0, k} + \beta_{1, k} X_{population, i}\\
+& + \beta_{2, k} X_{white percentage, i}\\
+& + \beta_{3, k} X_{income, i} + \beta_{4, k} X_{age, i}\\
+& + \beta_{5, k} X_{party affiliation, i} + \beta_{6, k} X_{population density, i}
+\end{align*}
+
+Where $f(k, i)$ is the probability that observation $i$ has outcome $k$, and $\beta_{m, k}$ is the regression coefficient for the $m$th predictor for the outcome $k$.
+
+\begin{center}
+\newpage
+\end{center}
+
+# Results
+
+## AR Covid Case Forecast Model
+```{r,echo = FALSE,fig.align = 'center'}
+# Timeseries Analysis
+
+# Converting to timeseries
+new_cases.ts <- ts(us_data$new_cases,frequency = 7)
+new_deaths.ts <- ts(us_data$new_deaths,frequency = 7)
+
+## CASES
+## plot the ts
+#autoplot(new_cases.ts)+
+#  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Cases in US") +
+# ggtitle("Timeseries of New Covid 19 Cases in US") 
+
+## Decompose
+components.ts = decompose(new_cases.ts)
+plot(components.ts,xlab = "Weeks since March 1st, 2020")
+```
+\begin{center}
+Figure 10 - Decomposition of Covid Case Data
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+### Test for Stationarity
+```{r}
+# Test for Stationarity
+tseries::adf.test(new_cases.ts)
+```
+It is not stationary!\
+
+```{r,echo = FALSE,fig.align = 'center'}
+## Remove Non Stationrity through differencing
+diff_new_cases.ts <- diff(new_cases.ts)
+
+components.ts2 = decompose(diff_new_cases.ts)
+plot(components.ts2,xlab = "Weeks since March 1st, 2020")
+```
+\begin{center}
+Figure 10 - Decomposition of Difference Covid Case Data
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+```{r}
+# Test for Stationarity with differencing
+tseries::adf.test(diff(new_cases.ts))
+```
+This data is stationary!\
+```{r,echo = FALSE}
+## examine autocorrelation function
+new_cases.ts %>% diff() %>% ggtsdisplay(main="")
+```
+\begin{center}
+Figure 11 - Autocorelation function and Partial Autocorrelation Function for difference covid case data
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+```{r,echo=FALSE, results="hide"}
+## Calculate optimal coefficient for model
+auto.arima(new_cases.ts, trace=TRUE) 
+
+## Determining AR model
+fitARIMA_cases <- arima(new_cases.ts, order=c(0,1,1),seasonal = list(order = c(0,0,2), period = 7),method="ML")
+```
+### Checking Residuals
+```{r,echo=FALSE, results="hide"}
+
+## Check residuals
+checkresiduals(fitARIMA_cases)
+```
+\begin{center}
+Figure 11 - Autocorelation function and Partial Autocorrelation Function for difference covid case data
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+### Visualizing Forecast
+```{r,echo=FALSE,fig.width=7,fig.height=4,fig.align='center'}
+## plot forecast
+autoplot(forecast(fitARIMA_cases))+
+  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Cases in US") +
+  ggtitle("AR Lag 7 Model for Covid Cases")
+```
+\begin{center}
+Figure 12 - 30 Day forecast for Covid-19 cases in US using AR Lag-7 Model. Dark blue indicates model results, light blue bars indicate 95% confidence interval.
+\vspace{5mm} %5mm vertical space
+\end{center}
+
+## AR Covid Death Forecast Model
+```{r,echo=FALSE}
+## Decompose
+components.ts = decompose(new_deaths.ts)
+plot(components.ts,xlab = "Weeks since March 1st, 2020")
+```
+
+```{r}
+# Test for Stationarity
+tseries::adf.test(new_deaths.ts)
+```
+
+```{r,echo=FALSE}
+## Remove Non Stationrity through differencing
+diff_new_deaths.ts <- diff(new_deaths.ts)
+
+components.ts2 = decompose(diff_new_deaths.ts)
+plot(components.ts2,xlab = "Weeks since March 1st, 2020")
+```
+
+```{r}
+# using differencing method
+tseries::adf.test(diff(new_deaths.ts))
+```
+
+```{r,echo=FALSE, results="hide"}
+## examine autocorrelation function
+new_deaths.ts %>% diff() %>% ggtsdisplay(main="")
+
+## Calculate optimal coefficient for model
+auto.arima(new_deaths.ts, trace=TRUE) 
+
+## Determining AR model
+fitARIMA_deaths <- arima(new_deaths.ts, order=c(1,0,2),seasonal = list(order = c(0,1,1), period = 7),method="ML")
+```
+
+```{r,echo=FALSE, results="hide"}
+## Check residuals
+checkresiduals(fitARIMA_deaths)
+```
+
+```{r,echo=FALSE,fig.width=7,fig.height=4,fig.align='center'}
+## plot forecast
+autoplot(forecast(fitARIMA_deaths))+
+  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Deaths in US") +
+  ggtitle("AR Lag 7 Model for Covid Deaths")
+```
+
+\begin{center}
+\newpage
+\end{center}
+## Spatial analysis
+```{r make case and dealth matrix, include=FALSE}
+state_data2 <- state_data2 %>%
+  mutate(avg_new_cases = stats::filter(new_cases, filter=rep(1/7,7), side=1),
+         avg_new_deaths = stats::filter(new_deaths, filter=rep(1/7,7), side=1))
+
+
+ts_avg_case_matrix <- matrix(, nrow = length(states_vect), ncol = length(dates_vect))
+ts_avg_death_matrix <- matrix(, nrow = length(states_vect), ncol = length(dates_vect))
+
+for (i in 1:length(states_vect)) {
+  for (j in 1:length(dates_vect)) {
+    tryCatch({ts_avg_case_matrix[i,j] <- state_data2$avg_new_cases[(state_data2$state == states_vect[i] 
+                                                            & state_data2$date == dates_vect[j])]},
+                                    error=function(e){ts_avg_case_matrix[i,j] <- NA})
+    tryCatch({ts_avg_death_matrix[i,j] <- state_data2$avg_new_deaths[(state_data2$state == states_vect[i] &
+                                                             state_data2$date == dates_vect[j])]},
+                                    error=function(e){ts_avg_death_matrix[i,j] <- NA})
+  }
+}
+
+rownames(ts_avg_case_matrix) <- states_vect
+rownames(ts_avg_death_matrix) <- states_vect
+colnames(ts_avg_case_matrix) <- dates_vect
+colnames(ts_avg_death_matrix) <- dates_vect
+
+ts_avg_case_matrix <- ts_avg_case_matrix[ , colSums(is.na(ts_avg_case_matrix)) == 0]
+ts_avg_death_matrix <- ts_avg_death_matrix[ , colSums(is.na(ts_avg_death_matrix)) == 0]
+
+```
+
+We first smoothed the time-series data for better esitimate the K-shape distance and clustering analysis. Below we plotted the new cases/deaths time series (log transformed) data for each states. \
+
+```{r plot time series data, echo=FALSE, results="hide", message=FALSE, warning = FALSE, fig.width=8, fig.height=4}
+cl <- rainbow(50)
+
+par(mfrow=c(1,2)) 
+plot(0,0,xlim = c(0,330),ylim = c(0,10),type = "n", main= 'Cases time series data for each state', xlab='Time', ylab='Log num of cases')
+for (i in 1:50){
+    lines(log(ts_avg_case_matrix[i,]),col = cl[i], type = 'l')
+}
+
+plot(0,0,xlim = c(0,330),ylim = c(0,8),type = "n", main='Deaths time series data for each state', xlab='Time', ylab='Log num of deaths')
+for (i in 1:50){
+    lines(log(ts_avg_death_matrix[i,]),col = cl[i], type = 'l')
+}
+
+```
+\begin{center}
+Figure <PLACE HOLDER> - Timeseries of smoothed and log transformed daily Covid-19 cases (left) and deaths (right) in the United States.
+\end{center}
+
+
+We hypothesized that the spreading of the COVID-19 virus over states in the US is geographical-dependent. Thus we want to know the relationship between the shape of the cases/deaths growth and the geographical distance among states. First, we calculated the K-shape distance between the time series of any two states. Then, the esimated K-shape distances for cases and deaths as well as the geographical distances between states is then plotted in a adjacency matrices. \
+
+```{r SBD distance matrix and geographical distance matrix, echo=FALSE, include=FALSE}
+suppressPackageStartupMessages(library(dtw))
+
+dtw_distmat_case <- proxy::dist(ts_avg_case_matrix, method = "SBD", 
+                           upper = TRUE, diag = TRUE)
+dtw_distmat_death <- proxy::dist(ts_avg_death_matrix, method = "SBD", 
+                           upper = TRUE, diag = TRUE)
+
+dtw_distmat_case <- as.matrix(dtw_distmat_case)
+dtw_distmat_death <- as.matrix(dtw_distmat_death)
+us_distance_matrix <- as.matrix(dist(cbind(state.center$x, state.center$y)))
+rownames(us_distance_matrix) <- rownames(dtw_distmat_death)
+colnames(us_distance_matrix) <- colnames(dtw_distmat_death)
+df <- data.frame(case=dtw_distmat_case[lower.tri(dtw_distmat_case, diag=FALSE)],
+                 death=dtw_distmat_death[lower.tri(dtw_distmat_death, diag=FALSE)],
+                 geo_dis=us_distance_matrix[lower.tri(us_distance_matrix)])
+```
+
+```{r echo=FALSE, fig.width=4, fig.height=3}
+
+heatmap(dtw_distmat_case, Colv = NA, Rowv = NA, symm =T,  cex.main=0.8, margins = c(3, 3), 
+        main = 'K-shape distance cases', cexCol = 0.5, cexRow = 0.5)
+heatmap(dtw_distmat_death, Colv = NA, Rowv = NA, symm =T, margins = c(3, 3), 
+        main = 'K-shape distance deaths', cexCol = 0.5, cexRow = 0.5)
+heatmap(us_distance_matrix, Colv = NA, Rowv = NA, symm =T, margins = c(3, 3), 
+        main = 'Euclidean Geo distance', cexCol = 0.5, cexRow = 0.5)
+
+```
+\begin{center}
+Figure <PLACE HOLDER> - Heapmaps for the K-shape distances for cases and deaths and geographical distances between states
+\end{center}
+
+We tested the correlation between the geographical distances among states and the K-shape distance among the states. The results show that:
+
+```{r Correlation test for distances, echo=FALSE}
+cor.test(df$case, df$geo_dis, method = "pearson")
+cor.test(df$death, df$geo_dis, method = "pearson")
+```
+
+The results supported our hypotheses that the geographical distances amongs states is correlated with the growth pattern of cases (*r* = 0.305, *p* < 0.001) and deaths (*r* = 0.290, *p* < 0.001), as shown in Figure <PLACE HOLDER> below.
+
+```{r Correlation plot, fig.width=3, fig.height=2, echo=FALSE, results='hide', message=FALSE}
+ggscatter(df, x = "case", y = "geo_dis", size = 0.8,
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "geo distance", ylab = "case K-shape distance")
+
+ggscatter(df, x = "death", y = "geo_dis", size = 0.8,
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "geo distance", ylab = "death K-shape distance")
+```
+\begin{center}
+Figure <PLACE HOLDER> - Scatter plot and fitted regression for the geo distances against the K-shape distances of time series for cases and deaths
+\end{center}
+
+```{r US states geographical data scrapping and correlation, echo=FALSE, incude=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(choroplethr)
+library(acs)
+api.key.install('a094e7b6969767fb50b6af3cd246ff66d0eec50a')
+us_data <- get_state_demographics(endyear = 2013, span = 5)
+us_data_2020 <- get_state_demographics(endyear = 2019, span = 5)
+
+```
+
+In order to find out the best clusters for the clustering analysis on the time series. We repeated fitted the partition clustering algorithm and estimate the Clustering Validity Indices (CVI) for difference size of clusters $K$. As shown below:
+
+```{r CVI for clustering, echo=FALSE}
+print("Partition clustering for cases")
+pc_k_case <- tsclust(ts_avg_case_matrix, k = 5L:9L,
+                distance = "dtw_basic", centroid = "dba",norm = "L2",
+                preproc = zscore,norm = "L2",
+                window.size = 20L)
+
+names(pc_k_case) <- paste0("k_", 5L:9L)
+sapply(as.list(pc_k_case), cvi, type = "internal")
+
+print("Partition clustering for deaths")
+pc_k_death <- tsclust(ts_avg_death_matrix, k = 5L:9L,
+                distance = "dtw_basic", centroid = "dba",norm = "L2",
+                preproc = zscore,norm = "L2",
+                window.size = 20L)
+
+names(pc_k_death) <- paste0("k_", 5L:9L)
+sapply(as.list(pc_k_death), cvi, type = "internal")
+```
+
+This analysis indicates that for the partition clustering analysis, the best cluter size is around 6 for both cases and deaths. Thus we choose $K = 6$. We applied a partition clustering algorithm based on estimated DTW distances between the time-series. The classification for time series at different states into distinct clusters are shown in Figure <PLACE HOLDER>. We also applied a hierarchical clustering analysis on the time series, the results are shown in Figure <PLACE HOLDER>. In order to intrepret the growth pattern for each cluster, we plotted the centroid time series (measured by DTW barycenter averaging^[Petitjean, François, Alain Ketterlin, and Pierre Gançarski. "A global averaging method for dynamic time warping, with applications to clustering." Pattern recognition 44.3 (2011): 678-693.]). As shown in Figure <PLACE HOLDER>, different clusters for cases and deaths are different for 1) the time point for different waves of COVID-19 spreading. 2) the relative cases/deaths increase for each waves. These growth patterns systematically differ among states based on their geographical position.
+
+
+```{r Clustering, include=FALSE}
+pc_case <- tsclust(ts_avg_case_matrix, type = "partitional", k = 6L, preproc = zscore,norm = "L2",
+              distance = "dtw_basic", centroid = "dba",
+              trace = TRUE, seed = 8,
+              norm = "L2", window.size = 20L,
+              args = tsclust_args(cent = list(trace = TRUE)))
+
+case_cluster <- pc_case@cluster
+case_cluster_list <- as.list(setNames(case_cluster, tolower(states_vect)))
+
+
+pc_death <- tsclust(ts_avg_death_matrix, type = "partitional", k = 6L, preproc = zscore,norm = "L2",
+              distance = "dtw_basic", centroid = "dba",
+              trace = TRUE, seed = 8,
+              norm = "L2", window.size = 20L,
+              args = tsclust_args(cent = list(trace = TRUE)))
+
+death_cluster <- pc_death@cluster
+death_cluster_list <- as.list(setNames(death_cluster, tolower(states_vect)))
+
+
+
+hc_case <- tsclust(ts_avg_case_matrix, type = "hierarchical", k =7, 
+              distance = "dtw_basic", trace = TRUE, preproc = zscore,norm = "L2",
+              control = hierarchical_control(method = "average"))
+
+
+hc_death <- tsclust(ts_avg_death_matrix, type = "hierarchical", k = 7, 
+              distance = "sbd", trace = TRUE, preproc = zscore,norm = "L2",
+              control = hierarchical_control(method = "average"))
+pc_case_plot <- plot(pc_case)
+pc_death_plot <- plot(pc_death)
+hc_case_plot <- plot(hc_case)
+hc_death_plot <- plot(hc_death)
+```
+
+```{r plot clutering, echo=FALSE}
+grid.arrange(pc_case_plot,pc_death_plot,nrow=2)
+```
+\begin{center}
+Figure <PLACE HOLDER> - Clustering analysis for cases (Upper) and death (Bottom) with k=6
+\end{center}
+
+```{r h clustering plot, fig.width=9, fig.height=5, echo=FALSE, message=FALSE, results='hide'}
+par(mfrow=c(1,2)) 
+plot(hc_case, cex=0.5)
+xlab('')
+plot(hc_death, cex=0.5)
+```
+\begin{center}
+Figure <PLACE HOLDER> - Hierarchical clustering analysis results - binary tree plot for cases (Left) and death (Right)
+\end{center}
+
+```{r , include=FALSE}
+
+centroids_plots_case <- vector('list', 6)
+for (i in 1:6) {
+  temp <- pc_case@centroids[[i]]
+  temp_df <- data.frame(t=1:length(temp), cases=temp)
+  centroids_plots_case[[i]] <- ggplot(temp_df, aes(x=t, y=cases)) +  
+  geom_line(linetype = "solid", color = brewer.pal(n = 7, name = "Set2")[i+1], size=1) +
+    ggtitle(paste("Case Cluster", i))
+}
+
+centroids_plots_death <- vector('list', 6)
+for (i in 1:6) {
+  temp <- pc_death@centroids[[i]]
+  temp_df <- data.frame(t=1:length(temp), death=temp)
+  centroids_plots_death[[i]] <- ggplot(temp_df, aes(x=t, y=death)) +  
+  geom_line(linetype = "solid", color = brewer.pal(n = 7, name = "Set2")[i+1], size=1)+
+    ggtitle(paste("Death Cluster", i))
+}
+```
+
+```{r Cluster centroid plotting, echo=FALSE, results='hide', message=FALSE}
+grid.arrange(grobs = c(centroids_plots_case, centroids_plots_death), ncol = 3)
+```
+
+\begin{center}
+Figure <PLACE HOLDER> - The centroid time series for different clusters of cases (upper two rows) and deaths (bottom two rows)
+\end{center}
+
+
+```{r State data, include=FALSE}
+state <- map_data("state")
+setdiff(unique(state$region), names(death_cluster_list))
+
+death_cluster_list['district of columbia'] = 0
+case_cluster_list['district of columbia'] = 0
+
+state$case_cluster <- unlist(case_cluster_list[state$region], use.names=FALSE)
+state$death_cluster <- unlist(death_cluster_list[state$region], use.names=FALSE)
+
+state$case_cluster <- as.character(state$case_cluster)
+state$death_cluster <- as.character(state$death_cluster)
+```
+
+
+With the clutering results, we plotted the cluster membership for each state in a US map. As shown in Figure <PLACE HOLDER>, the 6 clusters is spatially distributed in a systematic and predictable manner. 
+
+```{r plot cluster map,echo=FALSE,fig.width=9, fig.height=4}
+us_cluster_case <- ggplot(data=state, aes(x=long, y=lat, fill=case_cluster, group=group)) + 
+  geom_polygon(color = "white") + 
+  guides(fill=FALSE) + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank()) +
+  scale_fill_manual(values=brewer.pal(n = 7, name = "Set2")) + 
+  ggtitle('Clustering of new cases US states') + 
+  coord_fixed(1.3)
+
+
+us_cluster_death <- ggplot(data=state, aes(x=long, y=lat, fill=death_cluster, group=group)) + 
+  geom_polygon(color = "white") + 
+  guides(fill=FALSE) + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank()) + 
+  scale_fill_manual(values=brewer.pal(n = 7, name = "Set2")) + 
+  ggtitle('Clustering of new deaths US states') + 
+  coord_fixed(1.3)
+
+grid.arrange(us_cluster_case, us_cluster_death, ncol = 2)
+
+```
+
+\begin{center}
+Figure <PLACE HOLDER> - The US state maps color filled by the cluster memebership for case and death growth
+\end{center}
+
+Thus, we predicted that the pattern of cases and deaths growth of each state should be predicted by the demographical and political information for each state. We fitted a multinomical statistical testing to predict the cluster membership. The predictors include total population, percent white, median age, per capita income, political party affiliation, and the population density. For the summary of the two full models. 
+
+```{r construct data for multinomial testing, include=FALSE}
+
+prediction_clusters_case <- unlist(case_cluster_list[us_data_2020$region], use.names=FALSE)
+prediction_clusters_death <- unlist(death_cluster_list[us_data_2020$region], use.names=FALSE)
+
+vote <- c(0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0,0,0,0,0, 1, 1,1,1,1, 0,0,0,0, 1,1,1,1,1, 0,0,0,0, 1,1,1, 0,0,0,0,0, 1,1,1,0,1,0)
+
+
+us_data_2020$cluster_case <- prediction_clusters_case
+us_data_2020$cluster_death <- prediction_clusters_death
+us_data_2020_subset <- subset(us_data_2020, region %in% tolower(states_vect))
+us_data_2020_subset$vote <- vote
+
+us_data_2020_subset$cluster_case <- as.factor(us_data_2020_subset$cluster_case)
+us_data_2020_subset$cluster_death <- as.factor(us_data_2020_subset$cluster_death)
+us_data_2020_subset$vote <- as.factor(us_data_2020_subset$vote)
+
+
+
+us_data_2020_subset$total_population_scale <- scale(us_data_2020_subset$total_population)
+us_data_2020_subset$percent_white_scale <- scale(us_data_2020_subset$percent_white)
+us_data_2020_subset$per_capita_income_scale <- scale(us_data_2020_subset$per_capita_income)
+us_data_2020_subset$median_rent_scale <- scale(us_data_2020_subset$median_rent)
+us_data_2020_subset$median_age_scale <- scale(us_data_2020_subset$median_age)
+us_data_2020_subset$density <- scale(state.density)
+```
+
+```{r multinomial model fitting, include=FALSE}
+multi_mo_case <- multinom(cluster_case ~ total_population_scale + percent_white_scale +
+                       per_capita_income_scale + vote + density + 
+                       median_age_scale, data = us_data_2020_subset, model=TRUE)
+multi_mo_death<- multinom(cluster_death ~ total_population_scale + percent_white_scale +
+                       per_capita_income_scale + vote + density + 
+                       median_age_scale, data = us_data_2020_subset, model=TRUE)
+```
+
+```{r display summary results, echo=FALSE}
+print('The summary for multinomial regression model for case')
+summary(multi_mo_case)
+
+print('The summary for multinomial regression model for death')
+summary(multi_mo_death)
+```
+
+With the coefficients and the standard error extracted from the fitted model, we calcualted the p values for each of the predictors. See the results below.
+
+```{r, p values for MRM, echo=FALSE}
+z_case <- summary(multi_mo_case)$coefficients/summary(multi_mo_case)$standard.errors
+
+print('The p values for each predictors for case')
+p_case <- (1 - pnorm(abs(z_case), 0, 1)) * 2
+p_case
+
+z_death <- summary(multi_mo_death)$coefficients/summary(multi_mo_death)$standard.errors
+
+print('The p values for each predictors for death')
+p_death <- (1 - pnorm(abs(z_death), 0, 1)) * 2
+p_death
+```
+
+Moreover, we applied a chi square testing for the full model for both cases and deaths. The results suggest that our model can significantly predict the cluster membership for cases growth (p < 0.001) and deaths growth (p < 0.001) based on the demographical and political information of each state. For the results of chi square testing, see below:
+
+```{r chi square testing, echo=FALSE, message=FALSE, warning=FALSE}
+print('Chi square testing for the full model, case')
+chisq.test(us_data_2020_subset$cluster_case,predict(multi_mo_case))
+print('Chi square testing for the full model, death')
+chisq.test(us_data_2020_subset$cluster_death,predict(multi_mo_death))
+
+
+# polutation density build-in R data
+
+```
+
+Finally, we are interested in whether or not each individual predictor is a significant predictor for the cases or deaths growth for each state. Then we compared the Likelihood Ratio testing between the reduced model and the full model with one predictor dropped each time. Based on the results, we found that the percentage of white polulation (p < 0.001) and the political party affliation (p < 0.05) are the two significant preditors for predicting case. The total population (p = 0.139), median age (p = 0.663), and per capita income (p = 0.252) are not significant predictor for predicting the case growth pattern. We also found that, for death growth pattern, only the polulation density is the significant predictor. The total population (p = 0.707), median age (p = 0.993), per capita income (p = 0.721), and political party affliation (p = 0.469) are not significant predictor for predicting the death growth pattern. However, the percentage of white polulation (p = 0.051) is the weak predictor for predicting the death growth pattern. See the full results below:
+
+```{r significant testing for each predictor, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+result1 <- lrtest(multi_mo_case, "total_population_scale")
+result2 <- lrtest(multi_mo_case, "percent_white_scale")
+result3 <- lrtest(multi_mo_case, "median_age_scale")
+result4 <- lrtest(multi_mo_case, "per_capita_income_scale")
+result5 <- lrtest(multi_mo_case, "vote")
+result6 <- lrtest(multi_mo_case, "density")
+
+result01 <- lrtest(multi_mo_death, "total_population_scale")
+result02 <- lrtest(multi_mo_death, "percent_white_scale")
+result03 <- lrtest(multi_mo_death, "median_age_scale")
+result04 <- lrtest(multi_mo_death, "per_capita_income_scale")
+result05 <- lrtest(multi_mo_death, "vote")
+result06 <- lrtest(multi_mo_death, "density")
+
+ctable <- table(us_data_2020_subset$cluster_case,predict(multi_mo_case))
+# ctable
+
+ctable <- table(us_data_2020_subset$cluster_case,predict(multi_mo_case))
+# ctable
+
+
+```
+
+```{r displaying the results, echo=FALSE}
+print('Case total_population_scale')
+result1
+print('Case percent_white_scale')
+result2
+print('Case median_age_scale')
+result3
+print('Case per_capita_income_scale')
+result4
+print('Case vote')
+result5
+print('Case density')
+result6
+
+print('Death total_population_scale')
+result01
+print('Death percent_white_scale')
+result02
+print('Death median_age_scale')
+result03
+print('Death per_capita_income_scale')
+result04
+print('Death vote')
+result05
+print('Death density')
+result06
+```
+
+
+
+\begin{center}
+\newpage
+\end{center}
+# Conclusions
+
+## Temporal Trends
+
+## Spatial Trends
+Based on our analysis, we found out that:
+1. The new cases growth pattern and the new deaths growth patterns among states are correlated with their geographical location. This indicates that geographically adjacent states will have similar cases and deaths growth pattern. This might suggest that the spreading of the virus is constraint by the geographical distance and might be diffused adjacently. 
+
+2. We found that the cases and deaths time series could be clustered into six clusters. Each cluster indicates an unique growth pattern for case or death. The distinction between different clusters could be 1) the timing of waves of spreading, and 2) the relative number of cases/deaths among the three waves (some states have low first wave cases, but have high second and third wave cases, but other states have high first wave cases, but have relatively low second and third wave cases). 
+
+3. We also found that the clustering of states are also geographically clustered. This could be due to 1) the adjancent spreading of the virus; 2) the natural environment of different states (e.g. temperature, weather, etc.); 3) the way people live (e.g., urban vs. rural). 
+
+4. We built a multinomial logistic regression model to predict the cluster membership for both case and death, with predictors as total population, percent white, median age, per capita income, political party affiliation, and the population density. We found that: 1) the demographical information of races can predict both death and cases, which might indicate the existence of racial inequality at times of a pandemic. 2) The political party affiation is the significant predictor for cases, which might indicate that different party affiliation influences people's attitude and coping strategy toward COVID-19. 3) The population density is the major predictor for death, which might indicate that the growth of death is mainly determined by the avaliability of hospitalization resources. When in a population dense area, the rapid spreading of the virus will run out of the hospital resources and eventually have causal effect on patients' death. 
+    
+
