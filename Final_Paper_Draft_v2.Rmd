@@ -39,13 +39,14 @@ Due to the fragmented nature of the US public health system, there is no central
 ## Data Formatting
 
 All data analysis and visualization for this study was conducted in RStudio. The dataset was filtered to only examine cases and deaths reported from the beginning of March 2020 through the middle of February 2021. Raw data was reported as cumulative cases and deaths through time. To examine daily statistics, a filtering function was applied to calculate the finite difference between each consecutive reporting day.
-
+\begin{center}
+\newpage
+\end{center}
 # Exploratory Data Analysis
 
 ## Timeseries Visualization
 
 An initial exploratory data analysis (EDA) was conducted to both elucidate trends and characteristics of the dataset and to guide the model development process. To better understand the temporal evolution of daily new cases and deaths in the US, a timeseries for both of these parameters was first generated (Figure 1).  The timeseries of daily US Covid-19 cases depicts four distinct regimes in the change in daily covid 19 cases throughout the course of the pandemic. From March through the end of May 2020, the number of cases grew logistically; growing exponentially in March before asymptoting at a maximum daily new case load of 25,000-30,000 individuals through April and May. Similar but larger magnitude growth trends are evident in June through August, asymptoting around 65,000 daily new cases, and October through December 2020, asymptoting around 250,000 daily new cases. Note that the sharp drop in cases around the end of December is likely a reflection of a decline in reporting around the winter holidays and not a reflection of the actual drop in the real case load. From January 2021 onwards, the case trend differs from the early regimes, with a noticeable linear decline in the reported case numbers through December. Another interesting aspect of this dataset is the seven-day oscillation in the case numbers. New case numbers always tend to be lower on Saturdays and Sundays than during weekdays, reflecting the fact that many labs do not report case numbers on the weekend. The timeseries of daily Covid-19 deaths shows a similar logistic growth rate to the case rate in the early spring 2020. However, the number of deaths, drops significantly from mid-May 2020 and oscillates around 1000 cases a days until November 2020 when the number of daily new deaths rises again, fluctuating around 3000 deaths per days. The seven oscillations, observed in the timeseries of new cases, is even more prominent in the death data, with significant drops in reported deaths during the weekend. This initial visualization and review makes evident that that there are clear similarities and differences in the functional trends between both datasets.\  
-\  
 
 ```{r, echo = FALSE}
 # read in NYtimes Covid data tables 
@@ -122,6 +123,7 @@ grid.arrange(p1,p2,nrow=2)
 ```
 \begin{center}
 Figure 1 - Timeseries of daily new Covid-19 cases (top) and deaths (bottom) in the United States, March 2020 - February 2021.
+\newpage
 \end{center}
 
 ## Case-Death Scatter Plot
@@ -298,9 +300,14 @@ mnthly_death_bplot + labs(y = "Mean Per Capita Daily Deaths by State",x = "Month
 ```
 \begin{center}
 Figure 4 - Boxplot of daily average new Covid-19 deaths by state across US. Data is binned by month
+\newpage
 \end{center}
 
 ## Regional and Demographic Trends
+State level spatial and demographic trends are also investigated by generating boxplots of monthly-binned, mean daily per capita case and death rates  grouped by region (Figures 6 and 7). The four regions (Northeast, South, North Central, West) are provided in the state.region default dataset in r (Figure 5). Alaska and Hawaii, not pictured, are included in the Western region. Boxplots were also generated using density as a grouping factor  (Figures 8 and 9). Regional patterns provide into how the virus spread around the US and what parts of the country drove spikes in cases and deaths at different points in time throughout the study period. For example, the Northeast had the highest magnitude and median of cases and deaths in March, April and May, largest driving the early spring rise in cases. Subsequently, the South the highest totals in July and August, promoting the summer rise. However both of these peaks were dwarfed by the magnitudes observed in the Western States, primarily in Arizona and California, in October and November 2020, constituting the majority of the winter rise.
+\begin{center}
+\vspace{5mm}
+\end{center}
 ```{r, echo = FALSE}
 # Region Map
 all_states <- map_data("state")
@@ -347,8 +354,7 @@ mnthly_case_bplot3 + labs(y = "Mean Per Capita Daily Cases by Density",x = "Mont
 ```
 
 \begin{center}
-Figure 8 - Density Case Boxplot
-\vspace{5mm} %5mm vertical space
+Figure 8 - Boxplot of daily average new Covid-19 cases by state across US. Data is binned by month and categorized by density [person per square mile] 
 \end{center}
 
 ```{r, echo = FALSE,fig.width=7,fig.height=4}
@@ -359,7 +365,7 @@ mnthly_death_bplot3 + labs(y = "Mean Daily Per Capita Deaths by Density",x = "Mo
 ```
 
 \begin{center}
-Figure 9 - Density Death Boxplot
+Figure 9 - Boxplot of daily average new Covid-19 deaths by state across US. Data is binned by month and categorized by density [person per square mile] 
 \newpage
 \end{center}
 
@@ -390,6 +396,9 @@ $$Y_t = \alpha + \beta_1 Y_{t-1} + \beta_2 Y_{t-2} + \ldots + \beta_p Y_{t-p}\ep
 ### ARIMA US Covid Cases Model Development Process
 A cursory review of the timeseries in US Covid cases (Figure 1) indicates that the rates of these parameters are not a stationary process. It is evident that there are three distinct periods of increasing trends followed by a decline in 2021. Decomposing this timeseries into long term trends and seasonal variation can provide further indication if this is a non-stationary process. Figure 10 shows the raw US covid case timeseries data along with the decomposed trend, seasonal variation and white noise in the dataset.
 
+
+This visualization makes evident that this a non-stationary process. This is validated by running an augmented Dickey-Fuller (adf) Test where the null hypothesis is that the dataset is stationary.
+
 ```{r,echo = FALSE,fig.align = 'center'}
 # Timeseries Analysis of Cases
 
@@ -402,18 +411,16 @@ components.ts = decompose(new_cases.ts)
 plot(components.ts,xlab = "Weeks since March 1st, 2020")
 ```
 \begin{center}
-Figure 10 - Decomposed US Covid Case Timeseries Data
+Figure 10 - Decomposed raw US Covid case timeseries Data
 \vspace{5mm} %5mm vertical space
 \end{center}
-
-This visualization makes evident that this a non-stationary process. This is validated by running an augmented Dickey-Fuller (adf) Test where the the alternative hypothesis is that the dataset is stationary.
 
 ```{r}
 # Test for Stationarity
 tseries::adf.test(new_cases.ts)
 ```
 
-The large p-value calculated in this test thus shows that the null hypothesis that the timeseries is non-stationary cannot be rejected..For ARIMA model to be valid, the non-stationary aspects of this dataset must thus be removed. This can be accomplished by simply taking the difference between each data point. A plot of the decomposed difference-stationarized case timeseries dataset and the corresponding results of the adf test shown below. This dataset now no longer has any long term trends and the p-value for the stationary hypothesi is >0.01 so it is significant.
+The large p-value calculated in this test thus shows that the null hypothesis that the timeseries is non-stationary cannot be rejected..For ARIMA model to be valid, the non-stationary aspects of this dataset must thus be removed. This can be achieved by simply taking the difference between each data point. A plot of the decomposed difference-stationarized case timeseries dataset and the corresponding results of the adf test shown below. This dataset now no longer has any long term trends and the p-value for the stationary hypothesi is >0.01, so it is significant.
 
 ```{r,echo = FALSE,fig.align = 'center'}
 ## Remove Non Stationrity through differencing
@@ -423,7 +430,7 @@ components.ts2 = decompose(diff_new_cases.ts)
 plot(components.ts2,xlab = "Weeks since March 1st, 2020")
 ```
 \begin{center}
-Figure 11 - Decomposition of Differenced Covid Case Data
+Figure 11 - Decomposition of difference US ovid case data
 \vspace{5mm} %5mm vertical space
 \end{center}
 
@@ -434,7 +441,7 @@ tseries::adf.test(diff(new_cases.ts))
 \begin{center}
 \newpage
 \end{center}
-The next step in the model development process is to find the optimal parameters (p,d,q) for the ARIMA forecast model. Each of these parameters correspond to the AR order, degree of differing and MA order of the model respectively. In this ARIMA model optimal parameters new to specified for both the non-seasonal and seaonal part of the model This can be accomplished by visualizing the autocorrelation function (ACF) and partial autocorrelation function (PCF) for the dataset (Figure 11). The ACF and PCF plots depict what lags have the highest correlation to the a given output. These plots both clearly shown that a seven day lag has the highest correlation. The auto.arima function in r can be used to automate the optimal parameter. Results of this algorithm indicate that the optimal parameters for the seasonal component are 0,1,1 and 0,0,2 for the seasonal component. To verify the validity of these parameters the model residuals were checked (Figure 12). The residuals are normally distributed around 0, indicating that this model is unbiased.
+The next step in the model development process is to find the optimal parameters (p,d,q) for the ARIMA forecast model. Each of these parameters correspond to the AR order, degree of differing and MA order of the model respectively. In this ARIMA model optimal parameters new to specified for both the non-seasonal and seaonal part of the model This can be accomplished by visualizing the autocorrelation function (ACF) and partial autocorrelation function (PCF) for the dataset (Figure 11). The ACF and PCF plots depict what lags have the highest correlation to the a given output. These plots both clearly shown that a seven day lag has the highest correlation. The auto.arima function in r can be used to automate the optimal parameter. Results of this algorithm indicate that the optimal parameters for the seasonal component are 0,1,1 and 0,0,2 for the seasonal component. To verify the validity of these parameters the model residuals were checked (Figure 12). The residuals are normally distributed around 0, indicating that this model is unbiased. The weekly fluctuations are preserved in both models, acurately reflecting the artificial decline in cases during the weekends due to reduced laboratory staff and runs. In actually the case load does not fluctuate with this magnitude as there is no natural process that would explain a weekly cycle in virus spread. This oscillations is even more pronounced in the death reports.
 
 \begin{center}
 \vspace{10mm} %5mm vertical space
@@ -461,7 +468,10 @@ Figure 12 - Residuals Plot for ARIMA Case Forecast Model
 
 ### ARIMA US Covid Death Model Development Process
 
-The same model development process was repeated for the timeseries of US Covid-19 deaths. 
+The same model development process was repeated for the timeseries of US Covid-19 deaths. The raw data was decomposed and tested with adf to verify non-stationarity. A single finite differencing schemne was then applied to remove temporal trends. Finally the ACF and PCF of the data were plotted up to determine lags and optimal model parameters. In the death data, 7, 14, and 21 days were all signifcant lags. However the fact that these are multiples of seven it was assumed that a lag-7 model would continue to be sufficient. A key difference between the ARIMA models for cases and deaths are the optimal parameters for the non-seasonal and seasonal trends. For the death arima model, the parameters were calculated to be 1,0,2 and 0,1,1 for the non-seasonal and seasonal terms respectively.The residuals in this model too are normally distributed around 0, so the model can be assumed to be unbiased.
+
+
+
 \begin{center}
 \vspace{5mm} %5mm vertical space
 \end{center}
@@ -471,7 +481,7 @@ components.ts = decompose(new_deaths.ts)
 plot(components.ts,xlab = "Weeks since March 1st, 2020")
 ```
 \begin{center}
-Figure  - Decomposition of raw US Covid-19 Death Data
+Figure 13 - Decomposition of raw US Covid-19 Death Data
 \vspace{5mm} %5mm vertical space
 \end{center}
 ```{r}
@@ -487,7 +497,7 @@ components.ts2 = decompose(diff_new_deaths.ts)
 plot(components.ts2,xlab = "Weeks since March 1st, 2020")
 ```
 \begin{center}
-Figure  - Decomposition of differenced US Covid-19 Death Data
+Figure  14 - Decomposition of differenced US Covid-19 Death Data
 \vspace{5mm} %5mm vertical space
 \end{center}
 ```{r}
@@ -495,7 +505,7 @@ Figure  - Decomposition of differenced US Covid-19 Death Data
 tseries::adf.test(diff(new_deaths.ts))
 ```
 
-```{r,echo=FALSE, results="hide"}
+```{r,echo=FALSE, results="hide",fig.width=7,fig.height=3,}
 ## examine autocorrelation function
 new_deaths.ts %>% diff() %>% ggtsdisplay(main="")
 
@@ -505,13 +515,18 @@ auto.arima(new_deaths.ts, trace=TRUE)
 ## Determining AR model
 fitARIMA_deaths <- arima(new_deaths.ts, order=c(1,0,2),seasonal = list(order = c(0,1,1), period = 7),method="ML")
 ```
+\begin{center}
+Figure  15 - ACF and PCF for differenced US Covid Death Data
+\vspace{5mm} %5mm vertical space
+\end{center}
 
-A key difference between the ARIMA models for cases and deaths are the optimal parameters for the non-seasonal and seasonal trends. For the death arima model, the parameters were calculated to be 1,0,2 and 0,1,1 for the non-seasonal and seasonal terms respectively.
 ```{r,echo=FALSE, results="hide",fig.align='center'}
 ## Check residuals
 checkresiduals(fitARIMA_deaths)
 ```
-The residuals in this model too are normally distributed around 0, so the model is unbiased.
+\begin{center}
+Figure  16 - Residual plot for differenced US Covid Death Data
+\end{center}
 
 
 ## Cluster Analysis
@@ -522,27 +537,36 @@ The residuals in this model too are normally distributed around 0, so the model 
 
 # Results
 
-## US-wide Covid-19 Case ARIMA Forecast Model
+## US-wide Covid-19 ARIMA Forecast Models
+
+The results for a 14 day forecast for US Covid-19 cases and deaths are shown in Figures XX and YY below. The ARIMA case model predicted an average decline in cases from 72,125  to 59.143 per day. On this day, March 1st 2021, the NYtimes reported 56,562 new cases,  less than five percent difference from the model value. The ARIMA death model forecasted a decline deaths from 3,161 to 1,311 per day compared with 1,425 deaths per day actually reported, an 8.7 percent increase from the model. Both these models appear to be validated, as they are both within 10% of observed values. The seven day periodic osscilations in cases is preserved in both models. It's important to note that this osscilation is likely an artifact of reporting procedure and not a representation of the true variability in case load. Bergman 2020 conducted a high resolution temporal analysis of New York and Los Angeles testing data and deduced that daily variation in testing signifcantly explained oscilattion in case numbers. Furthermore ossiclation mortality across the US data were attribute as "artificat of reporting".
+
+
 ```{r,echo=FALSE,fig.width=7,fig.height=3,fig.align='center'}
+fmodel_cases <- forecast(fitARIMA_cases)
+
 ## plot forecast
 autoplot(forecast(fitARIMA_cases))+
   xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Cases in US") +
   ggtitle("AR Lag 7 Model for Covid Cases")
 ```
+
 \begin{center}
-Figure 12 - 30 Day forecast for Covid-19 cases in US using AR Lag-7 Model. Dark blue indicates model results, light blue bars indicate 95 percent confidence interval.
+Figure 12 - 30 Day forecast for Covid-19 cases in US using AR Lag-7 Model. Dark blue indicates model results, blue and light blue bands indicate 80 and 95 percent confidence intervals.
 \vspace{5mm} %5mm vertical space
 \end{center}
 
-## US-wide Covid-19 Death ARIMA Forecast Model
+
 ```{r,echo=FALSE,fig.width=7,fig.height=3,fig.align='center'}
 ## plot forecast
+
+fmodel_death <- forecast(fitARIMA_deaths)
 autoplot(forecast(fitARIMA_deaths))+
   xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Deaths in US") +
   ggtitle("AR Lag 7 Model for Covid Deaths")
 ```
 \begin{center}
-Figure  - 30 Day forecast for Covid-19 deaths in US using AR Lag-7 Model. Dark blue indicates model results, light blue bars indicate 95 percent confidence interval.
+Figure  - 30 Day forecast for Covid-19 deaths in US using AR Lag-7 Model. Dark blue indicates model results, blue and light blue bands indicate 80 and 85 percent confidence intervals.
 \vspace{5mm} %5mm vertical space
 \end{center}
 
@@ -550,4 +574,9 @@ Figure  - 30 Day forecast for Covid-19 deaths in US using AR Lag-7 Model. Dark b
 
 ## Temporal Trends
 
+Any interesting extension of this analysis would be to develope a multivariate ARIMA forecast model using both case and death parameters as predictors.
+
 ## Spatial Trends
+
+# References
+Bergman, A., Sella, Y., Agre, P., & Casadevall, A. (2020). Oscillations in U.S. COVID-19 Incidence and Mortality Data Reflect Diagnostic and Reporting Factors. MSystems, 5(4), e00544-20. https://doi.org/10.1128/mSystems.00544-20
