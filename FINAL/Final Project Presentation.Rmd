@@ -309,7 +309,7 @@ $$\theta_q \epsilon_{t-q}$$
 - Calculations of Optimal Parameters for seasonal and non-seasonal trends
 
 ## Decomposed Raw Covid Case Data
-```{r,echo = FALSE,fig.align = 'center',fig.height = 3}
+```{r,echo = FALSE,fig.align = 'center'}
 # Timeseries Analysis of Cases
 
 # Converting to timeseries
@@ -321,13 +321,14 @@ components.ts = decompose(new_cases.ts)
 plot(components.ts,xlab = "Weeks since March 1st, 2020")
 ```
 
+## ADF Test for Stationarity on Raw Data
 ```{r}
 # Test for Stationarity
 tseries::adf.test(new_cases.ts)
 ```
 
 ## Decomposed Difference Case Data
-```{r,echo = FALSE,fig.align = 'center',fig.height = 3}
+```{r,echo = FALSE,fig.align = 'center'}
 ## Remove Non Stationrity through differencing
 diff_new_cases.ts <- diff(new_cases.ts)
 
@@ -335,6 +336,7 @@ components.ts2 = decompose(diff_new_cases.ts)
 plot(components.ts2,xlab = "Weeks since March 1st, 2020")
 ```
 
+## ADF Test for Stationarity on Differenced Data
 ```{r}
 # Test for Stationarity with differencing
 tseries::adf.test(diff(new_cases.ts))
@@ -351,7 +353,8 @@ auto.arima(new_cases.ts, trace=TRUE)
 ## Determining AR model
 fitARIMA_cases <- arima(new_cases.ts, order=c(0,1,1),seasonal = list(order = c(0,0,2), period = 7),method="ML")
 ```
-### Checking Residuals
+
+## Checking Residuals
 ```{r,echo=FALSE, results="hide"}
 
 ## Check residuals
@@ -406,5 +409,8 @@ autoplot(forecast(fitARIMA_deaths))+
 ```
 
 ## Timeseries Analysis and Conclusions
-- 
+- ARIMA models were developed to forecast US-wide Covid-19 case and death data for a 2 week period
+- both models agreed within 10 percent of observed numbers at end of predication timeframe
+- models reproduced long term trends as well as "artificial" oscillations in reporting numbers
+- this analysis could be improved by incorporating other parameters into a multivariate regression
 
