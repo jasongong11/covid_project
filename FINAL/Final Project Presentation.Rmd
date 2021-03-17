@@ -1,0 +1,377 @@
+---
+title: "Statistical Analysis of Temporal and Spatial Trends in US Covid-19 Cases and Deaths"
+author: "Jason Gong and Micah Swann"
+output: ioslides_presentation
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r,warning=FALSE,message=FALSE, include = FALSE}
+## REQUIRED PACKAGES
+# install.packages("gridExtra")
+# install.packages("mapproj")
+# install.packages("choroplethr")
+# importing libraries
+## REQUIRED LIBRARIES
+ library(dplyr)
+ library(tidyverse)
+ library(data.table)
+ library(ggplot2)  
+ library(scales)
+ library(gridExtra)
+ library(lmtest)
+ library(forecast)
+ library(dtwclust)
+ library(ggpubr)
+ library(gplots)
+ library(RColorBrewer)
+ library(nnet)
+ library(summarytools)
+ library(lmtest)
+```
+
+## Outline
+- Motivation
+- EDA
+- Timeseries Analysis
+    - ARIMA Model
+- Spatial Analysis
+    - Cluster Analysis
+
+## Motivation
+```{r,echo=FALSE}
+# read in NYtimes Covid data tables 
+
+# Cumulative Daily Cases and Deaths by 
+# 1 - County Level
+cty_data <-read.csv("us-counties.csv") 
+
+# 2 - State Level
+state_data <-read.csv("us-states.csv")
+state_pop <-read.csv("state_pop.csv")
+
+# 3 - 
+us_data <-read.csv("us.csv")
+
+# transforming date column from CHARACTER to DATE class
+cty_data$date <- as.Date(cty_data$date)
+state_data$date <- as.Date(state_data$date,format="%Y-%m-%d")
+us_data$date <- as.Date(us_data$date)
+
+# filter out dates before March 1st, 2020
+cty_data <- base::subset(cty_data,date>"2020-02-29")
+state_data <- base::subset(state_data,date>"2020-02-29")
+us_data <- base::subset(us_data,date>"2020-02-29")
+
+# Examination of US-wide Temporal Trends
+
+# Use `filter()` to add a column named `new_cases` and 'new_deaths'
+us_data$new_cases = as.numeric(stats::filter(us_data$cases,filter=c(1,-1), sides=1))
+
+us_data$new_deaths = as.numeric(stats::filter(us_data$deaths,filter=c(1,-1), sides=1))
+ 
+# Change first entry fo new deaths and new cases from NA to 0
+us_data$new_cases[1]<-0
+us_data$new_deaths[1]<-0
+
+# Add Data on Season
+season <- c("Spring","Summer","Winter","Fall")
+
+# create df for seasons
+season_df = data.frame(c(1:12),c("Winter","Winter","Spring","Spring","Spring","Summer","Summer","Summer","Fall","Fall","Fall","Winter"))
+names(season_df)[1] <- "month"
+names(season_df)[2] <- "season"
+
+for (i in 1:length(us_data$date))
+{
+  if (month(us_data$date[i]) >= 3 & month(us_data$date[i]) < 6) {
+    us_data$season[i] = season[1]
+  } else if (month(us_data$date[i]) >= 6 & month(us_data$date[i]) < 9) {
+    us_data$season[i] = season[2]
+  } else if (month(us_data$date[i]) >= 9 & month(us_data$date[i]) < 12) {
+    us_data$season[i] = season[3]
+  } else {
+    us_data$season[i] = season[4]
+  }
+}
+us_data$season = as.factor(us_data$season)
+```
+
+```{r, echo = FALSE}
+## Plotting Below
+
+# Timeseries of Covid Cases and Deaths through time
+# Value used to transform the data
+p1 <- ggplot(us_data, aes(x = date, y = new_cases)) +
+            geom_line(color = "darkred") +
+  labs(title="US Covid-19 Cases and Deaths",  y="Daily New Cases", x="")+
+  theme(plot.title = element_text(hjust = 0.5))
+  
+
+p2 <- ggplot(us_data, aes(x = date, y = new_deaths)) +
+            geom_line(color = "black") +
+  labs(  y="Daily New Deaths", x="Date")
+   
+grid.arrange(p1,p2,nrow=2)
+```
+
+```{r, echo = FALSE, fig.align="center", fig.width = 7, fig.height =3}
+## Examining State Spatial Trends
+
+# 1 - Formatting Data
+
+# remove leading character in State_Pop$State
+state_pop$State <- substring(state_pop$State,2)
+
+# remove commas from population and convert to numeric
+state_pop$Population <- as.numeric(gsub(",","",state_pop$Population))
+
+
+# add state population data
+state_data <- merge(state_data, state_pop, by.x="state", by.y="State")
+
+
+# get population density
+# remove DC from state_pop list
+state_pop <-state_pop [-c(9), ] 
+state.density = state_pop$Population/state.area
+
+## get state regional data
+states_info <- data.frame(state.name,state.region,state.density)
+names(states_info)[1] <- "Name"
+names(states_info)[2] <- "Region"
+names(states_info)[3] <- "Density"
+
+# add state region data
+state_data <- merge(state_data, states_info, by.x="state", by.y="Name")
+
+# categorize into density groups
+
+for (i in 1:length(state_data$Density))
+{
+  if (state_data$Density[i] <= 50) {
+     state_data$Density2[i] <- "<=50"
+  } else if (state_data$Density[i] >  50 & state_data$Density[i] <= 100) {
+    state_data$Density2[i] <- "50-100"
+  } else if (state_data$Density[i] >  100 & state_data$Density[i] <= 400) {
+    state_data$Density2[i] <- "100-400"
+  } else {
+    state_data$Density2[i] <- ">400"
+  }
+}
+state_data$Density2 <- factor(state_data$Density2,
+    levels = c('<=50','50-100','100-400','>400'),ordered = TRUE)
+
+# sort by date
+state_data<-state_data[order((state_data$date)),]
+
+# Find unique fips values to find unique counties
+fips_vect <- unique(cty_data$fips)
+
+# Find unique dates
+dates_vect <- unique(cty_data$date)
+
+# find unique states (Exclude territories)
+states_vect <-state.name;
+
+# Find number of daily new cases and deaths by state
+i <-1
+
+# looping through unique state names
+for (val in states_vect)
+{
+  # subset by state
+  dum <- subset(state_data, state == val)
+  
+  #Use `filter()` to add a column named `new_cases` 
+  dum$new_cases = as.numeric(stats::filter(dum$cases,filter=c(1,-1), sides=1))
+
+  # Set Na values to 0. These occur on the first date of obervations
+  dum$new_cases[is.na(dum$new_cases)] <- 0
+  
+  #Use `filter()` to add a column named `new_deaths` 
+  dum$new_deaths = as.numeric(stats::filter(dum$deaths,filter=c(1,-1), sides=1))
+  
+    # Set NaN values to 0. These occur on the first date of obervations
+  dum$new_deaths[is.na(dum$new_deaths)] <- 0
+  
+  # append to dataframe
+  if (i>1){
+    df1 <- rbind(df1,dum)
+  }else{
+    df1 <- dum
+  }
+  i <- i+1
+  rm(dum)
+}
+# final new data frame
+state_data2 <- df1
+
+#calculate per capita case and death rates
+state_data2$pc_new_cases <- state_data2$new_cases / state_data2$Population
+state_data2$pc_new_deaths <- state_data2$new_deaths / state_data2$Population
+
+# extracting year and month
+month <- data.frame(format(state_data2$date,format="%m/%y"))
+# month <- data.frame(format(state_data2$date,format="%m"))
+
+# add as columns to df
+# state_data2<-bind_cols(state_data2,year)
+state_data2<-bind_cols(state_data2,month)
+
+# sorting columns
+state_data3 <- state_data2[,c(1,14,2:13)]
+
+# renaming columns
+names(state_data3)[2] <- "month"
+
+# Calculate pc avg cases for each state
+state_mnthly_cases = as.data.table(state_data3)[, mean(pc_new_cases), by = .(month,state, Region,Density2)]
+names(state_mnthly_cases)[5] <- "avg_pc_cases"
+state_mnthly_cases$Density2 = as.factor(state_mnthly_cases$Density2)
+names(state_mnthly_cases)[4] <- "Density"
+
+# Calculate avg deaths for each state
+state_mnthly_deaths = as.data.table(state_data3)[, mean(pc_new_deaths), by = .(month,state,Region,Density2)]
+names(state_mnthly_deaths)[5] <- "avg_pc_deaths"
+state_mnthly_deaths$Density2 = as.factor(state_mnthly_deaths$Density2)
+names(state_mnthly_deaths)[4] <- "Density"
+
+# Boxplot of Monthly Cumulative Cases by State
+
+# getting dates in order
+dum = unique(state_mnthly_cases$month)
+state_mnthly_cases$month <- factor(state_mnthly_cases$month , levels=dum)
+state_mnthly_deaths$month <- factor(state_mnthly_deaths$month , levels=dum)
+
+# plotting below
+```
+## EDA
+- Timeseries Visualization of US Covid-19 Data
+- Case Vs Death scatter plots
+- Boxplots of daily averages binned by month at State Level
+  - grouped by region
+  - grouped by density
+  
+## Scatterplot
+```{r,echo=FALSE}
+# scatter plot comparison of Cases Vs Deaths
+gg <- ggplot(us_data,aes(x = new_cases, y = new_deaths, colour = season)) +
+  geom_point() +
+   labs(title="Cases Vs Deaths",subtitle="US Country-wide Covid Counts",y="Daily Deaths", x="Daily Cases")
+
+plot(gg)
+```
+
+## Regional and Demographic Trends
+```{r, echo = FALSE}
+# Region Map
+all_states <- map_data("state")
+all_states$region <- str_to_title(all_states$region)  
+stateData <- merge(all_states,states_info,by.x="region",by.y = "Name" )
+
+regionplot <- ggplot()+geom_polygon(data=stateData,aes(x=long, y=lat, group = group, fill=Region),color="grey50")+coord_map()
+regionplot
+```
+
+## Regional Box Plots
+```{r, echo = FALSE,fig.width=7,fig.height=2.3}
+# Color by region
+mnthly_case_bplot2 = ggplot(state_mnthly_cases,aes(month, avg_pc_cases)) + 
+geom_boxplot(aes(color = Region)) 
+mnthly_case_bplot2 + labs(y = "Mean Per Capita Daily \n Cases by Region",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Cases by Region")  
+```
+
+```{r, echo = FALSE,fig.width=7,fig.height=2.3}
+mnthly_death_bplot2 = ggplot(state_mnthly_deaths,aes(month, avg_pc_deaths)) + 
+geom_boxplot(aes(color = Region)) 
+mnthly_death_bplot2 + labs(y = "Mean Daily Per Capita \n Deaths by Region",x = "Month",
+                   title = "Box Plot of Monthly Per Capita Covid-19 Deaths by Region") 
+```
+
+## ARIMA Timeseries Forecasting Model
+
+ARIMA - AutoRegressive Integrated Moving Average Model
+$$Y_t = \alpha + \beta_1 Y_{t-1} + \beta_2 Y_{t-2} + \ldots +$$
+$$ \beta_p Y_{t-p}\epsilon_p + \epsilon_t + \theta_1 \epsilon_{t-1} + \theta_2 \epsilon_{t-2} + \ldots + $$
+$$\theta_q \epsilon_{t-q}$$
+
+
+## ARIMA Model Development Process
+- 1. Decomposition of data to examine trends and oscillatory patterns
+- 2. ADF test to check for non-stationarity
+- 3. Difference scheme to stationarize data
+- 4. Visualization of ACF and PCF to observe lags
+- 5. Calculations of Optimal Parameters for seasonal and non-seasonal trends
+
+```{r,echo = FALSE,fig.align = 'center'}
+# Timeseries Analysis of Cases
+
+# Converting to timeseries
+new_cases.ts <- ts(us_data$new_cases,frequency = 7)
+new_deaths.ts <- ts(us_data$new_deaths,frequency = 7)
+
+## Decompose
+components.ts = decompose(new_cases.ts)
+plot(components.ts,xlab = "Weeks since March 1st, 2020")
+```
+
+```{r}
+# Test for Stationarity
+tseries::adf.test(new_cases.ts)
+```
+
+```{r,echo = FALSE,fig.align = 'center'}
+## Remove Non Stationrity through differencing
+diff_new_cases.ts <- diff(new_cases.ts)
+
+components.ts2 = decompose(diff_new_cases.ts)
+plot(components.ts2,xlab = "Weeks since March 1st, 2020")
+```
+
+```{r}
+# Test for Stationarity with differencing
+tseries::adf.test(diff(new_cases.ts))
+```
+
+```{r,echo=FALSE, results="hide"}
+## Calculate optimal coefficient for model
+auto.arima(new_cases.ts, trace=TRUE) 
+
+## Determining AR model
+fitARIMA_cases <- arima(new_cases.ts, order=c(0,1,1),seasonal = list(order = c(0,0,2), period = 7),method="ML")
+```
+
+```{r,echo=FALSE, results="hide"}
+
+## Check residuals
+checkresiduals(fitARIMA_cases)
+
+```
+
+## Forecast Model Results
+```{r,echo=FALSE,fig.width=7,fig.height=3,fig.align='center'}
+fmodel_cases <- forecast(fitARIMA_cases)
+
+## plot forecast
+autoplot(forecast(fitARIMA_cases))+
+  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Cases in US") +
+  ggtitle("AR Lag 7 Model for Covid Cases")
+```
+
+```{r,echo=FALSE,fig.width=7,fig.height=3,fig.align='center'}
+## plot forecast
+
+fmodel_death <- forecast(fitARIMA_deaths)
+autoplot(forecast(fitARIMA_deaths))+
+  xlab("Weeks from from March 1st, 2020") + ylab("Daily New Covid Deaths in US") +
+  ggtitle("AR Lag 7 Model for Covid Deaths")
+```
+
+## Timeseries Analysis and Conclusions
+- 
+
