@@ -7,3 +7,4 @@ us.csv - National level covid 19 data for US
 Final Project Raw Code.R - Raw code for project analysis
 Final_Paper_Draft_v4_merged.rmd - R markdown file for term paper
 Final Project Presntation.rmd. - Presentation Slides for Final Project (SHINY)
+us_data_2020.csv - Demographical and political information for each state
